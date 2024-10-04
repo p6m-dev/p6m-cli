@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 http://maven.apache.org/xsd/settings-1.2.0.xsd" xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <servers>
+    <server>
+      <username>{{ artifactory_username }}</username>
+      <password>{{ artifactory_identity_token }}</password>
+      <id>central</id>
+    </server>
+    <server>
+      <username>{{ artifactory_username }}</username>
+      <password>{{ artifactory_identity_token }}</password>
+      <id>snapshots</id>
+    </server>
+    <server>
+      <username>{{ cloudsmith_username }}</username>
+      <password>{{ cloudsmith_api_key }}</password>
+      <id>cloudsmith</id>
+    </server>
+  </servers>
+  <profiles>
+    <profile>
+      <repositories>
+        <repository>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+          <id>central</id>
+          <name>{{ organization_name }}-libs-release</name>
+          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
+        </repository>
+        <repository>
+          <snapshots />
+          <id>snapshots</id>
+          <name>{{ organization_name }}-libs-snapshot</name>
+          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+          <id>central</id>
+          <name>{{ organization_name }}-libs-release</name>
+          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
+        </pluginRepository>
+        <pluginRepository>
+          <snapshots />
+          <id>snapshots</id>
+          <name>{{ organization_name }}-libs-snapshot</name>
+          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
+        </pluginRepository>
+      </pluginRepositories>
+      <id>artifactory</id>
+    </profile>
+    <profile>
+      <repositories>
+        <repository>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+          <id>cloudsmith</id>
+          <name>{{ organization_name }}-maven</name>
+          <url>https://maven.cloudsmith.io/ybor-group/{{ organization_name }}/</url>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+          <id>cloudsmith</id>
+          <name>{{ organization_name }}-maven</name>
+          <url>https://maven.cloudsmith.io/ybor-group/{{ organization_name }}/</url>
+        </pluginRepository>
+      </pluginRepositories>
+      <id>cloudsmith</id>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>{{ active_storage }}</activeProfile>
+  </activeProfiles>
+</settings>

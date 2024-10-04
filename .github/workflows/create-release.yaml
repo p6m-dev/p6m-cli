@@ -1,0 +1,233 @@
+name: Publish new version
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'The level to bump for the release'
+        type: choice
+        required: false
+        default: patch
+        options:
+          - major
+          - minor
+          - patch
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      previous_version: ${{ steps.previous_version.outputs.value }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get the version before bumping
+        id: previous_version
+        uses: SebRollen/toml-action@v1.2.0
+        with:
+          file: Cargo.toml
+          field: package.version
+
+      - name: Install cargo-release
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-release
+
+      - name: Bump Version
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cargo release version ${{ inputs.level }} -x --no-confirm
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .
+          git commit -m "[skip ci] Bump Version"
+          git push
+
+      - name: Get the version after bumping
+        id: version
+        uses: SebRollen/toml-action@v1.2.0
+        with:
+          file: Cargo.toml
+          field: package.version
+
+      - name: Tag the current commit with the version
+        run: |
+          git tag -a v${{ steps.version.outputs.value }} -m "Version ${{ steps.version.outputs.value }}"
+          git push --tags
+
+  build:
+    permissions:
+      contents: read
+      id-token: write
+
+    needs: [bump]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: linux-x86_64
+            binary: target/release/ybor
+            artifact: ybor.zip
+            blob: linux-x86_64.zip
+          - os: macos-latest
+            suffix: darwin-arm64
+            binary: target/release/ybor
+            artifact: ybor.zip
+            blob: darwin-arm64.zip
+          - os: macos-13
+            suffix: darwin-x86_64
+            binary: target/release/ybor
+            artifact: ybor.zip
+            blob: darwin-x86_64.zip
+          - os: windows-latest
+            suffix: windows-x86_64
+            binary: target\release\ybor.exe
+            artifact: ybor-installer.exe
+            blob: windows-x86_64.exe
+
+    outputs:
+      linux-x86_64_sha256: ${{ steps.nix_upload.outputs.linux-x86_64_sha256 }}
+      linux-x86_64_artifact: ${{ steps.nix_upload.outputs.linux-x86_64_artifact }}
+      darwin-arm64_sha256: ${{ steps.nix_upload.outputs.darwin-arm64_sha256 }}
+      darwin-arm64_artifact: ${{ steps.nix_upload.outputs.darwin-arm64_artifact }}
+      darwin-x86_64_sha256: ${{ steps.nix_upload.outputs.darwin-x86_64_sha256 }}
+      darwin-x86_64_artifact: ${{ steps.nix_upload.outputs.darwin-x86_64_artifact }}
+      windows-x86_64_sha256: ${{ steps.win_upload.outputs.windows-x86_64_sha256 }}
+      windows-x86_64_artifact: ${{ steps.win_upload.outputs.windows-x86_64_artifact }}
+
+    name: ${{ matrix.suffix}} build
+    runs-on: ${{ matrix.os }}
+    env:
+      STORAGE_ACCOUNT_NAME: naxpublicstuffs
+      STORAGE_CONTAINER_NAME: binaries
+      BLOB_NAME: ybor-${{ needs.bump.outputs.version }}/ybor-${{ needs.bump.outputs.version }}-${{ matrix.blob }}
+      ARTIFACT_PATH: ${{ matrix.artifact }}
+    
+    steps:
+      # Checkout the repository at the new commit
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.bump.outputs.version }}
+
+      - name: Setup Rust Dependency caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build it!
+        run: cargo build --release
+
+      - name: Azure Login
+        uses: Azure/login@v2.1.1
+        with:
+          tenant-id: 5d1bec5c-47be-4983-acce-5d3b101ad249
+          subscription-id: 4784fc26-1bbc-4539-9006-f03de4422f4d
+          client-id: 6f020ba1-c85e-4ed9-9ba1-032355012b7d
+
+      # Linux specific steps
+      - name: Archive Binaries (*nix)
+        if: matrix.os != 'windows-latest'
+        uses: vimtor/action-zip@v1.2
+        with:
+          files: ${{ matrix.binary }}
+          dest: ybor.zip
+
+      - name: Upload to Azure Blob Storage (*nix)
+        id: nix_upload
+        if: matrix.os != 'windows-latest'
+        run: |
+          az storage blob upload --auth-mode login --account-name $STORAGE_ACCOUNT_NAME --container-name $STORAGE_CONTAINER_NAME --file $ARTIFACT_PATH --name $BLOB_NAME --overwrite
+          cat > $GITHUB_STEP_SUMMARY <<SUMMARY
+          **Download Link:** https://$STORAGE_ACCOUNT_NAME.blob.core.windows.net/$STORAGE_CONTAINER_NAME/$BLOB_NAME
+          **Checksums:**
+          - **SHA256:** $(cat $ARTIFACT_PATH | openssl sha256 | awk '{print $NF}')
+          - **SHA1:** $(cat $ARTIFACT_PATH | openssl sha1 | awk '{print $NF}')
+          - **MD5:** $(cat $ARTIFACT_PATH | openssl md5 | awk '{print $NF}')
+          SUMMARY
+          echo "${{ matrix.suffix }}_artifact=https://$STORAGE_ACCOUNT_NAME.blob.core.windows.net/$STORAGE_CONTAINER_NAME/$BLOB_NAME" >> $GITHUB_OUTPUT
+          echo "${{ matrix.suffix }}_sha256=$(cat $ARTIFACT_PATH | openssl sha256 | awk '{print $NF}')" >> $GITHUB_OUTPUT
+
+      # Windows specific steps
+      - name: Create Installer (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
+        env:
+          YBOR_VERSION: ${{ needs.bump.outputs.version }}
+          YBOR_BINARY: ${{ matrix.binary }}
+        with:
+          path: ci/templates/inno/default.iss
+          options: /O+
+
+      - name: Upload to Azure Blob Storage (Windows)
+        id: win_upload
+        if: matrix.os == 'windows-latest'
+        run: |
+          az storage blob upload --auth-mode login --account-name $env:STORAGE_ACCOUNT_NAME --container-name $env:STORAGE_CONTAINER_NAME --file $env:ARTIFACT_PATH --name $env:BLOB_NAME --overwrite
+          $Summary = @"
+          **Download Link:** https://$env:STORAGE_ACCOUNT_NAME.blob.core.windows.net/$env:STORAGE_CONTAINER_NAME/$env:BLOB_NAME
+          **Checksums:**
+          - **SHA256:** $($(Get-FileHash -Path $env:ARTIFACT_PATH -Algorithm SHA256).Hash)
+          - **SHA1:** $($(Get-FileHash -Path $env:ARTIFACT_PATH -Algorithm SHA1).Hash)
+          - **MD5:** $($(Get-FileHash -Path $env:ARTIFACT_PATH -Algorithm MD5).Hash)
+          "@
+          $Summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          $Output = @"
+          ${{ matrix.suffix }}_artifact=https://$env:STORAGE_ACCOUNT_NAME.blob.core.windows.net/$env:STORAGE_CONTAINER_NAME/$env:BLOB_NAME
+          ${{ matrix.suffix }}_sha256=$($(Get-FileHash -Path $env:ARTIFACT_PATH -Algorithm SHA256).Hash)
+          "@
+          $Output | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+  update_homebrew_formula:
+    needs: [bump, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Dispatch event to ybor-tech/homebrew-tap
+        uses: ph-fritsche/action-dispatch@v1
+        with:
+          token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
+          type: repository
+          repo: ybor-tech/homebrew-tap
+          ident: update-formula
+          payload: |
+            {
+              "name": "ybor",
+              "version": "${{ needs.bump.outputs.version }}",
+              "linux_x64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
+              "darwin_arm64_sha256": "${{ needs.build.outputs.darwin-arm64_sha256 }}",
+              "darwin_x64_sha256": "${{ needs.build.outputs.darwin-x86_64_sha256 }}"
+            }
+
+  # NOTE: Disabled until original winget package is accepted to avoid conflicts
+  # update_winget_package:
+  #   needs: [bump, build]
+  #   runs-on: windows-latest
+  #   env:
+  #     Token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
+  #     Identifier: YborGroup.YborCLI
+  #     Version: ${{ needs.bump.outputs.version }}
+  #     Artifact: ${{ needs.build.outputs.windows-x86_64_artifact }}
+  #     Sha256: ${{ needs.build.outputs.windows-x86_64_sha256 }}
+  #     # Manifests MUST be stored under this directory
+  #     ManifestPath: manifests\n\YborGroup\YborCLI\${{ needs.bump.outputs.version }}
+
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #     - name: Prepare the winget manifests
+  #       run: |
+  #         ni -Type Directory -Path $env:ManifestPath
+  #         gc ci/templates/winget/version.yaml | foreach { [Environment]::ExpandEnvironmentVariables($_) } | Out-File -FilePath ${env:ManifestPath}\${env:Identifier}.yaml
+  #         gc ci/templates/winget/installer.yaml | foreach { [Environment]::ExpandEnvironmentVariables($_) } | Out-File -FilePath ${env:ManifestPath}\${env:Identifier}.installer.yaml
+  #         gc ci/templates/winget/locale.en-US.yaml | foreach { [Environment]::ExpandEnvironmentVariables($_) } | Out-File -FilePath ${env:ManifestPath}\${env:Identifier}.locale.en-US.yaml
+  #     - name: Submit Update to winget community repository
+  #       run: |
+  #         choco install wingetcreate
+  #         wingetcreate submit --token $env:Token $env:ManifestPath

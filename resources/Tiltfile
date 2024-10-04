@@ -1,0 +1,4 @@
+# List of services to stand up using tilt
+
+{% for application in applications %}include("{{ application }}/Tiltfile")
+{% endfor %}

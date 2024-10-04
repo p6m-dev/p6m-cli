@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: %Identifier%
+PackageVersion: %Version%
+PackageLocale: en-US
+Publisher: Ybor Group
+PublisherUrl: https://ybor.ai
+# PublisherSupportUrl:
+Author: Ybor Group
+PackageName: Ybor Command Line Interface
+# PackageUrl:
+License: Proprietary
+# LicenseUrl:
+Copyright: Copyright 2023-2024 Ybor Group
+# CopyrightUrl:
+ShortDescription: Universal Command Line Interface for Ybor Group services
+Tags:
+  - ybor
+  - naxcli
+  - cli
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
