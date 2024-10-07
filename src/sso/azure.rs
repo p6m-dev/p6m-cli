@@ -4,7 +4,7 @@ use log::{error, info, warn};
 use std::process::Command;
 
 pub async fn configure_azure() -> Result<(), Error> {
-    let azure_configs = find_azure_accounts()?;
+    let azure_configs = find_azure_accounts().unwrap_or(vec![]);
     if azure_configs.is_empty() {
         warn!("No Azure accounts found, make sure that you have run \n\n\taz login\nand have access to at least one Azure account.");
         return Ok(());

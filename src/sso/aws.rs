@@ -2,6 +2,8 @@ use crate::models::aws::{
     AwsAccountInfo, AwsAccountRoleInfo, AwsConfig, AwsEksListClustersResponse,
 };
 use anyhow::Error;
+use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_eks::config::Region;
 use chrono::{Duration, Utc};
 use futures_util::StreamExt;
 use log::{info, warn};
@@ -41,7 +43,10 @@ pub async fn configure_aws() -> Result<(), Error> {
     create_or_replace_file(aws_config_file_path.clone().to_str(), &empty_aws_config)
         .expect("Unable to overwrite ~/.aws/config");
 
-    let config = aws_config::load_from_env().await;
+    let config = aws_config::from_env()
+        .region(Region::new("us-east-2"))
+        .load()
+        .await;
     let sso_client = aws_sdk_sso::Client::new(&config);
     let page_size = 10;
 
