@@ -6,7 +6,7 @@ output = json
 
 [sso-session ybor]
 sso_start_url = https://ybor.awsapps.com/start#
-sso_region = us-west-2
+sso_region = us-east-2
 sso_registration_scopes = sso:account:access
 
 {% for account in account_role_vector %}
