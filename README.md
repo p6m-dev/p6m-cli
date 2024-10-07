@@ -21,9 +21,11 @@ Only available as a direct download for now.
 Also available through direct download
 
 ## Install from source code
-`git clone git@github.com:ybor-platform/ybor-cli.git`
-`cd ybor-cli`
-`cargo install --path .`
+```sh
+git clone git@github.com:ybor-platform/ybor-cli.git
+cd ybor-cli
+cargo install --path .
+```
 
 ## Post Configuration
 
