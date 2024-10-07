@@ -14,17 +14,21 @@ Only available as a direct download for now.
 
 ### MacOS / Linux
 
+<!-- @christiannuss-ybor: 2024-10-07: commented out since we don't have the tap set up yet
 ## Intall using brew
 
-`brew install ybor-tech/tap/ybor`
+```sh
+brew install ybor-tech/tap/ybor
+ybor --version
+```
 
 Also available through direct download
+-->
 
 ## Install from source code
 ```sh
-git clone git@github.com:ybor-platform/ybor-cli.git
-cd ybor-cli
-cargo install --path .
+sudo cargo install --force --git ssh://git@github.com/ybor-platform/ybor-cli.git --root /usr/local
+ybor --version
 ```
 
 ## Post Configuration
