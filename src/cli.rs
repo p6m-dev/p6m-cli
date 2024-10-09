@@ -8,9 +8,9 @@ use std::fs::create_dir_all;
 pub fn command() -> Command {
     clap::command!()
         .name("") // this string is prepended to -V and --version, resulting in invalid json
-        .author("Ybor")
+        .author("P6m Dev")
         .version(version::current_version())
-        .about("Ybor Engineering Utilities")
+        .about("p6m CLI")
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completions")
@@ -175,7 +175,7 @@ pub fn command() -> Command {
             )
         )
         .subcommand(Command::new("login")
-            .about("Login to Ybor services")
+            .about("Login to p6m services")
         )
         .subcommand(Command::new("whoami")
             .about("Display information about the currently logged in user")
@@ -208,7 +208,7 @@ pub enum Environment {
 impl Environment {}
 
 #[derive(Debug)]
-pub struct YborEnvironment {
+pub struct P6mEnvironment {
     pub config_dir: Utf8PathBuf,
 
     // Auth0
@@ -217,7 +217,7 @@ pub struct YborEnvironment {
     pub audience: String,
 }
 
-impl YborEnvironment {
+impl P6mEnvironment {
     pub fn init(matches: &ArgMatches) -> Result<Self, anyhow::Error> {
         let dev = matches.get_one::<bool>("development").cloned().unwrap();
 
@@ -230,17 +230,17 @@ impl YborEnvironment {
             true => {
                 println!("Using development environment");
                 Self {
-                    config_dir: home_dir.join(".ybor-dev"),
-                    domain: "ybor-tech-dev.us.auth0.com".to_owned(),
+                    config_dir: home_dir.join(".p6m-dev"),
+                    domain: "p6m-dev.us.auth0.com".to_owned(),
                     client_id: "DkAzPi8iJITkDWKAoSjPON9jq6RSyCL9".to_owned(),
-                    audience: "https://api-dev.ybor-tech.net/v1/".to_owned(),
+                    audience: "https://api-dev.p6m.dev/v1/".to_owned(),
                 }
             }
             false => Self {
-                config_dir: home_dir.join(".ybor"),
-                domain: "ybor-tech-prd.us.auth0.com".to_owned(),
+                config_dir: home_dir.join(".p6m"),
+                domain: "p6m-prd.us.auth0.com".to_owned(),
                 client_id: "pARG0v9g3gKP0K4xYD0x1ISkKhpuyrvI".to_owned(),
-                audience: "https://api.ybor-tech.net/v1/".to_owned(),
+                audience: "https://api.p6m.dev/v1/".to_owned(),
             },
         };
 

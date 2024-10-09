@@ -11,7 +11,7 @@ InstallModes:
   - silentWithProgress
 UpgradeBehavior: install
 Commands:
-  - ybor
+  - p6m
 Dependencies:
   PackageDependencies:
     - PackageIdentifier: Amazon.AWSCLI

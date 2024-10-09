@@ -1,14 +1,14 @@
 [package]
 authors = [
-    "Jimmie Fulton <jimmie@ybor.ai"
+    "Jimmie Fulton <jimmie@ybor.ai>"
 ]
-description = "Ybor Cli"
+description = "p6m Cli"
 edition = "2018"
-homepage = "https://github.com/ybor-platform/ybor-cli"
-name = "ybor"
-publish = ["ybor"]
+homepage = "https://github.com/p6m-run/p6m-cli"
+name = "p6m"
+publish = ["p6m"]
 readme = "README.md"
-repository = "https://github.com/ybor-platform/ybor-cli"
+repository = "https://github.com/p6m-run/p6m-cli"
 version = "0.4.1"
 
 [workspace]

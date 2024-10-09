@@ -65,7 +65,7 @@
           </snapshots>
           <id>cloudsmith</id>
           <name>{{ organization_name }}-maven</name>
-          <url>https://maven.cloudsmith.io/ybor-group/{{ organization_name }}/</url>
+          <url>https://maven.cloudsmith.io/p6m-dev/{{ organization_name }}/</url>
         </repository>
       </repositories>
       <pluginRepositories>
@@ -78,7 +78,7 @@
           </snapshots>
           <id>cloudsmith</id>
           <name>{{ organization_name }}-maven</name>
-          <url>https://maven.cloudsmith.io/ybor-group/{{ organization_name }}/</url>
+          <url>https://maven.cloudsmith.io/p6m-dev/{{ organization_name }}/</url>
         </pluginRepository>
       </pluginRepositories>
       <id>cloudsmith</id>

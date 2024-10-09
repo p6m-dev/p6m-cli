@@ -2024,6 +2024,52 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4030760ffd992bef45b0ae3f10ce1aba99e33464c90d14dd7c039884963ddc7a"
 
 [[package]]
+name = "p6m"
+version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-eks",
+ "aws-sdk-sso 0.33.0",
+ "azure_core",
+ "azure_identity",
+ "base64 0.21.2",
+ "camino",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "clap_derive",
+ "dirs",
+ "execute",
+ "futures-util",
+ "glob",
+ "globset",
+ "hex",
+ "inquire",
+ "itertools",
+ "log",
+ "loggerv",
+ "minijinja",
+ "octocrab",
+ "once_cell",
+ "reqwest 0.12.4",
+ "serde",
+ "serde_json",
+ "sha1",
+ "shellexpand",
+ "strum",
+ "strum_macros",
+ "time",
+ "tokio",
+ "url",
+ "urlencoding",
+ "uuid",
+ "walkdir",
+ "webbrowser",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3592,52 +3638,6 @@ name = "xmlparser"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
-
-[[package]]
-name = "ybor"
-version = "0.4.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-config",
- "aws-sdk-eks",
- "aws-sdk-sso 0.33.0",
- "azure_core",
- "azure_identity",
- "base64 0.21.2",
- "camino",
- "chrono",
- "clap",
- "clap_complete",
- "clap_derive",
- "dirs",
- "execute",
- "futures-util",
- "glob",
- "globset",
- "hex",
- "inquire",
- "itertools",
- "log",
- "loggerv",
- "minijinja",
- "octocrab",
- "once_cell",
- "reqwest 0.12.4",
- "serde",
- "serde_json",
- "sha1",
- "shellexpand",
- "strum",
- "strum_macros",
- "time",
- "tokio",
- "url",
- "urlencoding",
- "uuid",
- "walkdir",
- "webbrowser",
-]
 
 [[package]]
 name = "zeroize"

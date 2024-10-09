@@ -2,20 +2,20 @@
 PackageIdentifier: %Identifier%
 PackageVersion: %Version%
 PackageLocale: en-US
-Publisher: Ybor Group
-PublisherUrl: https://ybor.ai
+Publisher: P6m Dev
+PublisherUrl: https://p6m.dev
 # PublisherSupportUrl:
-Author: Ybor Group
-PackageName: Ybor Command Line Interface
+Author: P6m Dev
+PackageName: p6m Command Line Interface
 # PackageUrl:
 License: Proprietary
 # LicenseUrl:
-Copyright: Copyright 2023-2024 Ybor Group
+Copyright: Copyright 2023-2024 Ybor Technologies LLC
 # CopyrightUrl:
-ShortDescription: Universal Command Line Interface for Ybor Group services
+ShortDescription: Universal Command Line Interface for p6m services
 Tags:
-  - ybor
-  - naxcli
+  - p6m
+  - p6mcli
   - cli
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

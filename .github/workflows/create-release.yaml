@@ -74,23 +74,23 @@ jobs:
         include:
           - os: ubuntu-latest
             suffix: linux-x86_64
-            binary: target/release/ybor
-            artifact: ybor.zip
+            binary: target/release/p6m
+            artifact: p6m.zip
             blob: linux-x86_64.zip
           - os: macos-latest
             suffix: darwin-arm64
-            binary: target/release/ybor
-            artifact: ybor.zip
+            binary: target/release/p6m
+            artifact: p6m.zip
             blob: darwin-arm64.zip
           - os: macos-13
             suffix: darwin-x86_64
-            binary: target/release/ybor
-            artifact: ybor.zip
+            binary: target/release/p6m
+            artifact: p6m.zip
             blob: darwin-x86_64.zip
           - os: windows-latest
             suffix: windows-x86_64
-            binary: target\release\ybor.exe
-            artifact: ybor-installer.exe
+            binary: target\release\p6m.exe
+            artifact: p6m-installer.exe
             blob: windows-x86_64.exe
 
     outputs:
@@ -108,7 +108,7 @@ jobs:
     env:
       STORAGE_ACCOUNT_NAME: naxpublicstuffs
       STORAGE_CONTAINER_NAME: binaries
-      BLOB_NAME: ybor-${{ needs.bump.outputs.version }}/ybor-${{ needs.bump.outputs.version }}-${{ matrix.blob }}
+      BLOB_NAME: p6m-${{ needs.bump.outputs.version }}/p6m-${{ needs.bump.outputs.version }}-${{ matrix.blob }}
       ARTIFACT_PATH: ${{ matrix.artifact }}
     
     steps:
@@ -137,7 +137,7 @@ jobs:
         uses: vimtor/action-zip@v1.2
         with:
           files: ${{ matrix.binary }}
-          dest: ybor.zip
+          dest: p6m.zip
 
       - name: Upload to Azure Blob Storage (*nix)
         id: nix_upload
@@ -159,8 +159,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
         env:
-          YBOR_VERSION: ${{ needs.bump.outputs.version }}
-          YBOR_BINARY: ${{ matrix.binary }}
+          P6M_VERSION: ${{ needs.bump.outputs.version }}
+          P6M_BINARY: ${{ matrix.binary }}
         with:
           path: ci/templates/inno/default.iss
           options: /O+
@@ -189,16 +189,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Dispatch event to ybor-tech/homebrew-tap
+      - name: Dispatch event to p6m-dev/homebrew-tap
         uses: ph-fritsche/action-dispatch@v1
         with:
           token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
           type: repository
-          repo: ybor-tech/homebrew-tap
+          repo: p6m-dev/homebrew-tap
           ident: update-formula
           payload: |
             {
-              "name": "ybor",
+              "name": "p6m",
               "version": "${{ needs.bump.outputs.version }}",
               "linux_x64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
               "darwin_arm64_sha256": "${{ needs.build.outputs.darwin-arm64_sha256 }}",
@@ -211,12 +211,12 @@ jobs:
   #   runs-on: windows-latest
   #   env:
   #     Token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
-  #     Identifier: YborGroup.YborCLI
+  #     Identifier: P6mDev.P6mCLI
   #     Version: ${{ needs.bump.outputs.version }}
   #     Artifact: ${{ needs.build.outputs.windows-x86_64_artifact }}
   #     Sha256: ${{ needs.build.outputs.windows-x86_64_sha256 }}
   #     # Manifests MUST be stored under this directory
-  #     ManifestPath: manifests\n\YborGroup\YborCLI\${{ needs.bump.outputs.version }}
+  #     ManifestPath: manifests\n\P6mDev\PCLI\${{ needs.bump.outputs.version }}
 
   #   steps:
   #     - name: Checkout repository

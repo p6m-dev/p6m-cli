@@ -103,12 +103,12 @@ async fn set_context(
             organization_name
         ),
         StorageProvider::Cloudsmith => {
-            format!("npm.cloudsmith.io/ybor-group/{}/", organization_name)
+            format!("npm.cloudsmith.io/p6m-dev/{}/", organization_name)
         }
     };
     let platform_registry_url = match active_storage {
-        StorageProvider::Artifactory => "ybor.jfrog.io/artifactory/api/npm/ybor-platform-npm/",
-        StorageProvider::Cloudsmith => "npm.cloudsmith.io/ybor-group/ybor-platform/",
+        StorageProvider::Artifactory => "ybor.jfrog.io/artifactory/api/npm/p6m-npm/",
+        StorageProvider::Cloudsmith => "npm.cloudsmith.io/p6m-dev/p6m-run/",
     };
     let auth_config = match active_storage {
         StorageProvider::Artifactory => {
@@ -186,7 +186,7 @@ async fn set_context(
             organization_name
         ),
         StorageProvider::Cloudsmith => format!(
-            "https://python.cloudsmith.io/ybor-group/{}/",
+            "https://python.cloudsmith.io/p6m-dev/{}/",
             organization_name
         ),
     };

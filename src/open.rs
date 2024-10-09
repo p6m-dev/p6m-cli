@@ -32,7 +32,7 @@ async fn argocd_page(matches: &ArgMatches) -> Result<(), Error> {
         .to_string();
 
     webbrowser::open(&format!(
-        "https://{}-argocd.run-studio.ybor.ai/applications",
+        "https://{}-argocd.run-studio.p6m.run/applications",
         organization_name
     ))
     .map(|_| ())

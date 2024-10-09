@@ -1,6 +1,6 @@
 use crate::auth::TokenRepository;
 use crate::{
-    cli::YborEnvironment,
+    cli::P6mEnvironment,
     models::openid::{AccessTokenResponse, DeviceCodeRequest, OpenIdDiscoveryDocument},
     whoami,
 };
@@ -8,7 +8,7 @@ use anyhow::Error;
 use clap::ArgMatches;
 use log::{debug, trace};
 
-pub async fn execute(environment: YborEnvironment, matches: &ArgMatches) -> Result<(), Error> {
+pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Result<(), Error> {
     let token_repository = TokenRepository::new(&environment)?;
 
     let required_scopes = vec![
@@ -43,7 +43,7 @@ pub async fn execute(environment: YborEnvironment, matches: &ArgMatches) -> Resu
 
 pub async fn update_token(
     openid_configuration: &OpenIdDiscoveryDocument,
-    environment: &YborEnvironment,
+    environment: &P6mEnvironment,
     refresh_token: Option<String>,
 ) -> Result<AccessTokenResponse, Error> {
     debug!("Access token expired, attempting to refresh.");

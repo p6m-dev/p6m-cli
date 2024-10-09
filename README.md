@@ -1,11 +1,11 @@
-# Ybor Developer CLI
+# p6m Developer CLI
 
 This command line utility provides a number of cross-platform conveniences for local development, and encourages
 conventions, standards, and speed.
 
 ## Installation
 
-Direct download links can be found [here][ybor binaries azure bin]
+Direct download links can be found [here][p6m binaries azure bin]
 
 ### Windows
 
@@ -18,8 +18,8 @@ Only available as a direct download for now.
 ## Intall using brew
 
 ```sh
-brew install ybor-tech/tap/ybor
-ybor --version
+brew install p6m-dev/tap/p6m
+p6m --version
 ```
 
 Also available through direct download
@@ -27,22 +27,22 @@ Also available through direct download
 
 ## Install from source code
 ```sh
-sudo cargo install --force --git ssh://git@github.com/ybor-platform/ybor-cli.git --root /usr/local
-ybor --version
+sudo cargo install --force --git ssh://git@github.com/p6m-run/p6m-cli.git --root /usr/local
+p6m --version
 ```
 
 ## Post Configuration
 
 Some commands rely on environment variables being set in your shell:
 
-For Artifactory-related commands (`ybor context`), you need the following set:
+For Artifactory-related commands (`p6m context`), you need the following set:
 
 ```shell
 ARTIFACTORY_USERNAME         # your e-mail address
 ARTIFACTORY_IDENTITY_TOKEN   # Generate an Identity Token in Artifactory ("Edit Settings" menu option)
 ```
 
-For Github-related command (`ybor repos`), you need the follow set:
+For Github-related command (`p6m repos`), you need the follow set:
 
 ```shell 
 GITHUB_TOKEN  # Generate a classic Personal Access Token in your Github account
@@ -57,25 +57,25 @@ _Make sure you have configured your `GITHUB_TOKEN` environment variable, before 
 From the root or outside of your local `~/orgs` directory, you can pull all repos from all organizations you have access to:
 
 ```shell
-ybor repos pull  # Pulls all repos from all organizations 
+p6m repos pull  # Pulls all repos from all organizations 
 ```
 
-From inside an organization within `~/orgs` (Ex: ~/orgs/ybor-example), you can pull all repos from within that organization:
+From inside an organization within `~/orgs` (Ex: ~/orgs/p6m-example), you can pull all repos from within that organization:
 
 ```shell
-ybor repos pull  # Pulls all repos for the organization you are currently in 
+p6m repos pull  # Pulls all repos for the organization you are currently in 
 ```
 
 From any directory, you can specify which organization to pull repos from:
 
 ```shell
-ybor repos pull --org ybor-example  # Pulls all ybor-example repos to ~/orgs/ybor-example 
+p6m repos pull --org p6m-example  # Pulls all p6m-example repos to ~/orgs/p6m-example 
 ```
 
 Pull only new repositories.  Do not pull existing repos:
 
 ```shell
-ybor repos pull --new  # Only pull new repos 
+p6m repos pull --new  # Only pull new repos 
 ```
 
 ### Changing Contexts
@@ -87,9 +87,9 @@ When changing between organizations, you may need to change local configuration 
 For example, you may need to change your `~/.m2/settings.xml` to pull artifacts from your organization.  You can easily do so by executing the following command:
 
 ```shell
-ybor context # From within an organization within ~/orgs
+p6m context # From within an organization within ~/orgs
 # or
-ybor context --org ybor-example  # From anywhere
+p6m context --org p6m-example  # From anywhere
 ```
 
 ### Looking up Resources
@@ -99,27 +99,27 @@ in, or viewing the Artifactory repositories for the organization you are current
 
 ```shell
 # Github
-ybor open github
-ybor open gh
+p6m open github
+p6m open gh
 
 # Artifactory
-ybor open artifactory
-ybor open af
+p6m open artifactory
+p6m open af
 
 #ArgoCD
-ybor open argocd
-ybor open argo
-ybor open acd
+p6m open argocd
+p6m open argo
+p6m open acd
 ```
 
 ### Purging Local Caches
 
 ```shell
-ybor purge ide-files # Removes all IDE files from the current directory, recursively, allowing an IDE reset
+p6m purge ide-files # Removes all IDE files from the current directory, recursively, allowing an IDE reset
 
-ybor purge maven {groupId prefix} # Removes all Java Artifacts for the given groupId prefix
-# Ex: ybor purge maven ybor
-# Ex: ybor purge maven ybor.platform
+p6m purge maven {groupId prefix} # Removes all Java Artifacts for the given groupId prefix
+# Ex: p6m purge maven p6m
+# Ex: p6m purge maven p6m.platform
 ```
 
 ### Automatic SSO Configuration
@@ -131,11 +131,11 @@ You can automate configuration of your AWS SSO profiles and credentials to Kuber
 * Azure subcommand requires installation of the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 
 ```shell
-ybor sso # Runs both aws and azure subcommands
+p6m sso # Runs both aws and azure subcommands
 
-ybor sso aws # Replaces your ~/.aws/config and updates ~/.kube/config with entries for EKS clusters.
+p6m sso aws # Replaces your ~/.aws/config and updates ~/.kube/config with entries for EKS clusters.
 
-ybor sso azure # updates ~/.kube/config with entries for AKS clusters.
+p6m sso azure # updates ~/.kube/config with entries for AKS clusters.
 ```
 
-[ybor binaries azure bin]: https://naxpublicstuffs.blob.core.windows.net/binaries?comp=list&restype=container
+[p6m binaries azure bin]: https://naxpublicstuffs.blob.core.windows.net/binaries?comp=list&restype=container

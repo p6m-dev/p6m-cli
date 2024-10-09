@@ -15,14 +15,14 @@ mod version;
 mod whoami;
 mod auth;
 
-use cli::YborEnvironment;
+use cli::P6mEnvironment;
 use log::error;
 
 #[tokio::main]
 async fn main() {
     let matches = cli::command().get_matches();
     logging::init(&matches);
-    let environment = match YborEnvironment::init(&matches) {
+    let environment = match P6mEnvironment::init(&matches) {
         Ok(environment) => environment,
         Err(e) => {
             error!("{}", e);

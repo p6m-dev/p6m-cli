@@ -13,6 +13,6 @@ RUN cargo build --release
 
 FROM alpine:3.18
 
-COPY --from=builder /app/target/release/ybor /ybor
+COPY --from=builder /app/target/release/p6m /p6m
 
-ENTRYPOINT ["/ybor"]
+ENTRYPOINT ["/p6m"]

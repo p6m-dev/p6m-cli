@@ -2,13 +2,13 @@ use anyhow::Error;
 use clap::ArgMatches;
 
 use crate::{
-    cli::YborEnvironment,
+    cli::P6mEnvironment,
     login::update_token,
     models::openid::{OpenIdDiscoveryDocument, UserInfo},
 };
 use crate::auth::{TokenRepository, AuthToken};
 
-pub async fn execute(environment: YborEnvironment, _matches: &ArgMatches) -> Result<(), Error> {
+pub async fn execute(environment: P6mEnvironment, _matches: &ArgMatches) -> Result<(), Error> {
     let token_repository = TokenRepository::new(&environment)?;
     let access_token = token_repository.read_token(AuthToken::Access)?;
     let refresh_token = token_repository.read_token(AuthToken::Refresh)?;
@@ -40,7 +40,7 @@ pub async fn execute(environment: YborEnvironment, _matches: &ArgMatches) -> Res
             };
         println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
-        println!("You are not logged in. Please run `ybor login` to log in.");
+        println!("You are not logged in. Please run `p6m login` to log in.");
     }
     Ok(())
 }

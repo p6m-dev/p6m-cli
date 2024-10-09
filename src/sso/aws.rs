@@ -16,7 +16,7 @@ use std::{
     process::Command,
 };
 
-static SSO_PROFILE_NAME: &str = "ybor";
+static SSO_PROFILE_NAME: &str = "p6m";
 
 // Lower index is higher priority; Roles not in list are ranked below all others
 // TODO: Remove AdministratorAccess once dev control plane role assignments are working
@@ -24,7 +24,7 @@ const AWS_ROLE_HIERARCHY: [&str; 4] =
     ["administrator", "AdministratorAccess", "owner", "developer"];
 
 pub async fn configure_aws() -> Result<(), Error> {
-    // Create the initial aws config file with the Ybor SSO session. This covers the use case where the
+    // Create the initial aws config file with the P6m SSO session. This covers the use case where the
     // user is configuring this for the first time and there is no SSO config at all for downstream calls.
     let mut aws_dir = dirs::home_dir()
         .ok_or("Failed to get home directory")
@@ -147,14 +147,14 @@ fn find_aws_access_token(sso_profile_name: &str) -> Result<String, Error> {
             let now = Utc::now();
             let duration_until_timestamp = parsed_json.expiresAt - now;
             if duration_until_timestamp < Duration::zero() {
-                return Err(Error::msg(format!("sso token expired at {}, try logging in?\n\n\taws sso login --sso-session ybor\n", parsed_json.expiresAt)));
+                return Err(Error::msg(format!("sso token expired at {}, try logging in?\n\n\taws sso login --sso-session p6m\n", parsed_json.expiresAt)));
             }
 
             // Return the accessToken
             Ok(parsed_json.accessToken)
         }
         Err(_) => Err(Error::msg(
-            "unable to find AWS sso token, try logging in?\n\n\taws sso login --sso-session ybor\n",
+            "unable to find AWS sso token, try logging in?\n\n\taws sso login --sso-session p6m\n",
         )),
     }
 }

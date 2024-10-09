@@ -55,7 +55,7 @@ async fn pull_organizations(client: &Octocrab, matches: &ArgMatches) -> Result<(
         .all_pages(org_first_page)
         .await?
         .into_iter()
-        .filter(|org| org.login != "ybor-tech") // Skip ybor-tech
+        .filter(|org| org.login != "p6m-dev") // Skip p6m-dev
         .collect();
 
     for org in orgs {

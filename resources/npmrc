@@ -1,4 +1,4 @@
 registry=https://{{ registry_url }}
-@ybor-tech:registry=https://{{ platform_registry_url }}
+@p6m:registry=https://{{ platform_registry_url }}
 //{{ registry_url }}:{{ auth_config }}
 //{{ platform_registry_url }}:{{ auth_config }}

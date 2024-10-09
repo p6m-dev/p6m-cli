@@ -1,4 +1,4 @@
-use crate::cli::YborEnvironment;
+use crate::cli::P6mEnvironment;
 use crate::models::openid::AccessTokenResponse;
 use anyhow::Result;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -11,8 +11,8 @@ pub struct TokenRepository {
 }
 
 impl TokenRepository {
-    /// Creates a [TokenRepository] given a [YborEnvironment].
-    pub fn new(environment: &YborEnvironment) -> Result<TokenRepository> {
+    /// Creates a [TokenRepository] given a [P6mEnvironment].
+    pub fn new(environment: &P6mEnvironment) -> Result<TokenRepository> {
         let auth_dir = environment.config_dir().join("auth");
         fs::create_dir_all(&auth_dir)?;
         Ok(TokenRepository { auth_dir })
