@@ -27,13 +27,13 @@
           </snapshots>
           <id>central</id>
           <name>{{ organization_name }}-libs-release</name>
-          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
+          <url>https://p6m.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
         </repository>
         <repository>
           <snapshots />
           <id>snapshots</id>
           <name>{{ organization_name }}-libs-snapshot</name>
-          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
+          <url>https://p6m.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
         </repository>
       </repositories>
       <pluginRepositories>
@@ -43,13 +43,13 @@
           </snapshots>
           <id>central</id>
           <name>{{ organization_name }}-libs-release</name>
-          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
+          <url>https://p6m.jfrog.io/artifactory/{{ organization_name }}-libs-release</url>
         </pluginRepository>
         <pluginRepository>
           <snapshots />
           <id>snapshots</id>
           <name>{{ organization_name }}-libs-snapshot</name>
-          <url>https://ybor.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
+          <url>https://p6m.jfrog.io/artifactory/{{ organization_name }}-libs-snapshot</url>
         </pluginRepository>
       </pluginRepositories>
       <id>artifactory</id>

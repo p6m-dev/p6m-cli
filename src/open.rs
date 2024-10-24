@@ -46,7 +46,7 @@ async fn artifactory_page(matches: &ArgMatches) -> Result<(), Error> {
         .name()
         .to_string();
     webbrowser::open(&format!(
-        "https://ybor.jfrog.io/ui/packages?projectKey={}",
+        "https://p6m.jfrog.io/ui/packages?projectKey={}",
         organization_name
     ))
     .map(|_| ())

@@ -99,7 +99,7 @@ async fn set_context(
 
     let registry_url = match active_storage {
         StorageProvider::Artifactory => format!(
-            "ybor.jfrog.io/artifactory/api/npm/{}-npm/",
+            "p6m.jfrog.io/artifactory/api/npm/{}-npm/",
             organization_name
         ),
         StorageProvider::Cloudsmith => {
@@ -107,7 +107,7 @@ async fn set_context(
         }
     };
     let platform_registry_url = match active_storage {
-        StorageProvider::Artifactory => "ybor.jfrog.io/artifactory/api/npm/p6m-npm/",
+        StorageProvider::Artifactory => "p6m.jfrog.io/artifactory/api/npm/p6m-npm/",
         StorageProvider::Cloudsmith => "npm.cloudsmith.io/p6m-dev/p6m-run/",
     };
     let auth_config = match active_storage {
@@ -182,7 +182,7 @@ async fn set_context(
 
     let alt_publishing_url = match active_storage {
         StorageProvider::Artifactory => format!(
-            "https://ybor.jfrog.io/artifactory/api/pypi/{}-pypi/",
+            "https://p6m.jfrog.io/artifactory/api/pypi/{}-pypi/",
             organization_name
         ),
         StorageProvider::Cloudsmith => format!(
