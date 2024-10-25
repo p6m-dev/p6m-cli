@@ -21,7 +21,7 @@ static SSO_PROFILE_NAME: &str = "p6m";
 // Lower index is higher priority; Roles not in list are ranked below all others
 // TODO: Remove AdministratorAccess once dev control plane role assignments are working
 const AWS_ROLE_HIERARCHY: [&str; 4] =
-    ["administrator", "AdministratorAccess", "owner", "developer"];
+    ["AdministratorAccess", "administrator", "owner", "developer"];
 
 pub async fn configure_aws() -> Result<(), Error> {
     // Create the initial aws config file with the P6m SSO session. This covers the use case where the
