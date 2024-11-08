@@ -27,7 +27,7 @@ Also available through direct download
 
 ## Install from source code
 ```sh
-sudo cargo install --force --git ssh://git@github.com/p6m-run/p6m-cli.git --root /usr/local
+sudo cargo install --force --git ssh://git@github.com/p6m-dev/p6m-cli.git --root /usr/local
 p6m --version
 ```
 
