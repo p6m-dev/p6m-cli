@@ -148,9 +148,9 @@ fn uniqueify_kubeconfig(kubeconfig: &mut Kubeconfig) -> Result<String, Error> {
     cluster.name = server_name.clone();
     auth_info.name = server_name.clone();
 
-    context.context.as_mut().map(|foo| {
-        foo.cluster = cluster.name.clone();
-        foo.user = auth_info.name.clone();
+    context.context.as_mut().map(|c| {
+        c.cluster = cluster.name.clone();
+        c.user = auth_info.name.clone();
     });
 
     Ok(server_name)
