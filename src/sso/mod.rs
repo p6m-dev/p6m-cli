@@ -1,5 +1,6 @@
 pub mod aws;
 pub mod azure;
+pub mod vcluster;
 
 use anyhow::Error;
 use aws::configure_aws;

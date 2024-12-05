@@ -1,11 +1,12 @@
-use crate::models::aws::{
-    AwsAccountInfo, AwsAccountRoleInfo, AwsConfig, AwsEksListClustersResponse,
+use crate::{
+    models::aws::{AwsAccountInfo, AwsAccountRoleInfo, AwsConfig, AwsEksListClustersResponse},
+    sso::vcluster::update_vcluster_kubecfgs,
 };
 use anyhow::Error;
-use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_eks::config::Region;
 use chrono::{Duration, Utc};
 use futures_util::StreamExt;
+use kube::config::KubeConfigOptions;
 use log::{info, warn};
 use minijinja::render;
 use sha1::{Digest, Sha1};
@@ -17,11 +18,22 @@ use std::{
 };
 
 static SSO_PROFILE_NAME: &str = "p6m";
+const AWS_ROLE_ADMINISTRATOR_ACCESS: &str = "AdministratorAccess";
+const AWS_ROLE_ADMINIATRATOR: &str = "administrator";
+const AWS_OWNER: &str = "owner";
+const AWS_DEVELOPER: &str = "developer";
+
+// TODO: Use Auth0 (from p6m login token) to query for clusters
+const POORLY_HARDCODED_REGION: &str = "us-east-2";
 
 // Lower index is higher priority; Roles not in list are ranked below all others
 // TODO: Remove AdministratorAccess once dev control plane role assignments are working
-const AWS_ROLE_HIERARCHY: [&str; 4] =
-    ["AdministratorAccess", "administrator", "owner", "developer"];
+const AWS_ROLE_HIERARCHY: [&str; 4] = [
+    AWS_ROLE_ADMINISTRATOR_ACCESS,
+    AWS_ROLE_ADMINIATRATOR,
+    AWS_OWNER,
+    AWS_DEVELOPER,
+];
 
 pub async fn configure_aws() -> Result<(), Error> {
     // Create the initial aws config file with the P6m SSO session. This covers the use case where the
@@ -44,7 +56,7 @@ pub async fn configure_aws() -> Result<(), Error> {
         .expect("Unable to overwrite ~/.aws/config");
 
     let config = aws_config::from_env()
-        .region(Region::new("us-east-2"))
+        .region(Region::new(POORLY_HARDCODED_REGION))
         .load()
         .await;
     let sso_client = aws_sdk_sso::Client::new(&config);
@@ -57,6 +69,7 @@ pub async fn configure_aws() -> Result<(), Error> {
 
     // Loop through every account to populate the AwsAccountRoleInfo vector
     let mut account_role_vector: Vec<AwsAccountRoleInfo> = Vec::new();
+    let mut vcluster_vector: Vec<KubeConfigOptions> = Vec::new();
 
     for account in account_vector.iter() {
         match find_account_role(
@@ -90,7 +103,7 @@ pub async fn configure_aws() -> Result<(), Error> {
         .expect("Unable to overwrite ~/.aws/config");
 
     // Find clusters and update kubeconfig for each JV
-    for account in account_vector.iter() {
+    for account in account_role_vector.iter() {
         let res = cmd_list_clusters(account.account_slug.clone());
         info!("aws: list-clusters: {}", account.account_slug.clone());
         match res {
@@ -98,8 +111,24 @@ pub async fn configure_aws() -> Result<(), Error> {
                 list_clusters_res.clusters.iter().for_each(|cluster| {
                     let update_res =
                         cmd_update_kubecfg(account.account_slug.clone(), cluster.to_string());
-                    match update_res {
-                        Ok(_) => info!("aws: update-kubectx: {}", cluster),
+
+                    match update_res.as_ref() {
+                        Ok(update_res) => {
+                            info!("aws: update-kubectx: {}", update_res);
+
+                            match account.role_name.as_str() {
+                                // TODO: Restricted to just admins for now
+                                //       Later on, fetch cluster list from Auth0
+                                AWS_ROLE_ADMINIATRATOR | AWS_ROLE_ADMINISTRATOR_ACCESS => {
+                                    vcluster_vector.push(KubeConfigOptions {
+                                        cluster: Some(format!("arn:aws:eks:{POORLY_HARDCODED_REGION}:{}:cluster/{}", account.account_id, cluster.to_string()).into()),
+                                        context: Some(cluster.to_string()),
+                                        user: Some(format!("arn:aws:eks:{POORLY_HARDCODED_REGION}:{}:cluster/{}", account.account_id, cluster.to_string()).into()),
+                                    });
+                                }
+                                _ => {}
+                            };
+                        }
                         Err(err) => {
                             log::warn!("aws: unable to update kubeconfig': {}", err);
                         }
@@ -109,6 +138,16 @@ pub async fn configure_aws() -> Result<(), Error> {
             Err(err) => warn!("Unable to list clusters: {}", err),
         }
     }
+
+    for options in vcluster_vector.iter() {
+        match update_vcluster_kubecfgs(options).await {
+            Err(err) => {
+                log::warn!("aws: unable to update vcluster kubeconfigs: {}", err);
+            }
+            _ => {}
+        }
+    }
+
     Ok(())
 }
 
