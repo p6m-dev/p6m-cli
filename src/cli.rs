@@ -238,9 +238,9 @@ impl P6mEnvironment {
             }
             false => Self {
                 config_dir: home_dir.join(".p6m"),
-                domain: "p6m-prd.us.auth0.com".to_owned(),
-                client_id: "pARG0v9g3gKP0K4xYD0x1ISkKhpuyrvI".to_owned(),
-                audience: "https://api.p6m.dev/v1/".to_owned(),
+                domain: "auth.p6m.run".to_owned(),
+                client_id: "j4jEhWwe2od1eacxuocy0sfmbf7V4H8V".to_owned(),
+                audience: "https://api.p6m.run/v1/".to_owned(),
             },
         };
 
