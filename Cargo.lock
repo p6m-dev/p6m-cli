@@ -1847,6 +1847,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonwebtokens"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fb4c5f203abfb17d5f30a9f8e44c91c222fe5dcff9d6f57090167c4cfc22b70"
+dependencies = [
+ "base64 0.20.0",
+ "pem",
+ "regex",
+ "ring",
+ "serde",
+ "serde_json",
+ "simple_asn1",
+]
+
+[[package]]
 name = "k8s-openapi"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2337,6 +2352,7 @@ dependencies = [
  "hex",
  "inquire",
  "itertools",
+ "jsonwebtokens",
  "k8s-openapi",
  "kube",
  "log",
