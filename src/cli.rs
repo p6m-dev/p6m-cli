@@ -1,5 +1,5 @@
-use crate::models::artifact;
 use crate::version;
+use crate::{models::artifact, whoami};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
@@ -179,6 +179,15 @@ pub fn command() -> Command {
         )
         .subcommand(Command::new("whoami")
             .about("Display information about the currently logged in user")
+            .arg(
+                Arg::new("output")
+                            .long("output")
+                            .short('o')
+                            .help("Output format")
+                            .value_parser(value_parser!(whoami::Output))
+                            .default_value("default")
+                            .required(false),
+            )
         )
         .arg(
             Arg::new("verbosity")
