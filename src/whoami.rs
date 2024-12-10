@@ -94,11 +94,11 @@ fn k8s_auth(token_repository: &TokenRepository) -> Result<String, Error> {
         "apiVersion": "client.authentication.k8s.io/v1beta1",
         "spec": {},
         "status": {
-            "expirationTimestamp": match claims {
+            "expirationTimestamp": (match claims {
                 Some(claims) => NaiveDateTime::from_timestamp_opt(claims.exp, 0).map(|dt| dt.and_utc()),
                 _ => None,
-            },
-            "token": token,
+            }).context("unable to set expiration timestamp")?,
+            "token": token.context("missing token")?,
         },
     })
     .to_string())
