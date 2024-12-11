@@ -73,7 +73,7 @@ struct Claims {
 }
 
 fn k8s_auth(token_repository: &TokenRepository) -> Result<String, Error> {
-    let token = token_repository.read_token(AuthToken::Access)?;
+    let token = token_repository.read_token(AuthToken::Id)?;
 
     let claims = match token.clone() {
         Some(token) => {
