@@ -1,6 +1,7 @@
 extern crate clap;
 
 mod cli;
+mod check;
 mod completions;
 mod context;
 mod logging;
@@ -32,6 +33,7 @@ async fn main() {
 
     let result = match matches.subcommand() {
         Some(("completions", subargs)) => completions::execute(subargs),
+        Some(("check", subargs)) => check::execute(subargs),
         Some(("context", subargs)) => context::execute(subargs).await,
         Some(("open", subargs)) => open::execute(subargs).await,
         Some(("purge", subargs)) => purge::execute(subargs),

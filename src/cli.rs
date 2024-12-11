@@ -4,6 +4,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use clap::{value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
 use std::fs::create_dir_all;
+use crate::check::Ecosystem;
 
 pub fn command() -> Command {
     clap::command!()
@@ -19,6 +20,16 @@ pub fn command() -> Command {
                     Arg::new("generator")
                         .value_parser(value_parser!(Shell)),
                 )
+        )
+        .subcommand(Command::new("check")
+            .about("Check Development Environment")
+            .arg(
+                Arg::new("ecosystem")
+                    .value_parser(value_parser!(Ecosystem))
+                    .required(false)
+                    .action(clap::ArgAction::Append)
+                    .help("Ecosystem to check")
+            )
         )
         .subcommand(Command::new("context")
             .about("Switch Organization Contexts")
