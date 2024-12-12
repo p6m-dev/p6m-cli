@@ -199,6 +199,13 @@ pub fn command() -> Command {
                             .default_value("default")
                             .required(false),
             )
+            .arg(
+                Arg::new("organization-name")
+                    .long("org")
+                    .required(false)
+                    .action(clap::ArgAction::Set)
+                    .help("The JV Organization Name")
+            )
         )
         .arg(
             Arg::new("verbosity")
@@ -227,7 +234,7 @@ pub enum Environment {
 
 impl Environment {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct P6mEnvironment {
     pub config_dir: Utf8PathBuf,
 

@@ -1,9 +1,15 @@
+use anyhow::{anyhow, Context};
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use std::time;
 use tokio::time::sleep;
 
-#[derive(Clone, Deserialize, Serialize)]
+use crate::{
+    auth::{AuthToken, TokenRepository},
+    cli::P6mEnvironment,
+};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenIdDiscoveryDocument {
     pub issuer: String,
     pub token_endpoint: String,
@@ -22,20 +28,162 @@ impl OpenIdDiscoveryDocument {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct DeviceCodeRequest {
     pub client_id: String,
     pub scope: String,
     pub audience: String,
+    interactive_: bool,
+    environment: P6mEnvironment,
+    token_repository: TokenRepository,
+    openid_configuration: OpenIdDiscoveryDocument,
 }
 
 impl DeviceCodeRequest {
-    pub async fn send(
+    pub const DEFAULT_SCOPES: &str = "openid email offline_access";
+
+    pub async fn new(environment: &P6mEnvironment) -> Result<Self, anyhow::Error> {
+        let token_repository = TokenRepository::new(&environment)?;
+        let openid_configuration =
+            OpenIdDiscoveryDocument::discover(environment.domain.clone()).await?;
+
+        Ok(Self {
+            client_id: environment.client_id.clone(),
+            // note: openid, email, offline_access are implicity requested
+            scope: DeviceCodeRequest::DEFAULT_SCOPES.into(),
+            audience: environment.audience.clone(),
+            interactive_: true,
+            environment: environment.clone(),
+            token_repository,
+            openid_configuration,
+        })
+    }
+
+    pub fn with_scope(mut self, scope: &str) -> Self {
+        let mut scopes: Vec<&str> = self.scope.split(" ").into_iter().collect::<Vec<_>>();
+        scopes.push(scope);
+        scopes.sort();
+        scopes.dedup();
+
+        self.scope = scopes.join(" ");
+        self
+    }
+
+    pub fn without_scope(mut self, scope: &str) -> Self {
+        let scopes: Vec<&str> = self
+            .scope
+            .split(" ")
+            .into_iter()
+            .filter(|s| s.to_string() != scope.to_string())
+            .collect::<Vec<_>>();
+
+        self.scope = scopes.join(" ");
+        self
+    }
+
+    pub async fn with_organization(mut self, organization: &String) -> Result<Self, anyhow::Error> {
+        let token_repository = TokenRepository::new(&self.environment)?;
+
+        let id_claims = token_repository
+            .read_claims(AuthToken::Id)?
+            .context("unable to read claims from id token")?;
+
+        let organization_id = id_claims
+            .orgs
+            .and_then(|orgs| {
+                orgs.into_iter()
+                    .find(|org| {
+                        // match on either the key (org id) or the value (org name)
+                        org.0 == organization.to_string() || org.1 == organization.to_string()
+                    })
+                    .map(|o| o.0)
+            })
+            .context("missing desired organization in access token claims")?;
+
+        self.token_repository = token_repository.with_organization_id(&organization_id)?;
+
+        // Copy existing scopes, if any (so not to loose previously granted scopes)
+        self.scope = self
+            .token_repository
+            .read_claims(AuthToken::Access)
+            .unwrap_or_default()
+            .and_then(|claims| claims.scope)
+            .unwrap_or(Self::DEFAULT_SCOPES.to_string());
+
+        self = self.with_scope(&format!("org:{}", organization_id));
+
+        Ok(self)
+    }
+
+    pub fn interactive(mut self, interactive: bool) -> Self {
+        self.interactive_ = interactive;
+        self
+    }
+
+    pub async fn exchange_for_token(&self) -> Result<TokenRepository, anyhow::Error> {
+        let tokens = match self
+            .token_repository
+            .read_token(crate::auth::AuthToken::Refresh)?
+        {
+            None => {
+                if !self.interactive_ {
+                    return Err(anyhow!("Not logged in"));
+                }
+
+                let device_code_response = self
+                    .send(
+                        self.openid_configuration
+                            .device_authorization_endpoint
+                            .clone(),
+                    )
+                    .await?;
+
+                let tokens = device_code_response
+                    .exchange_for_token(
+                        self.openid_configuration.token_endpoint.clone(),
+                        self.client_id.clone(),
+                    )
+                    .await?;
+
+                tokens
+            }
+            Some(refresh_token) => self.refresh(&refresh_token).await?,
+        };
+
+        self.token_repository.write_tokens(&tokens)?;
+        Ok(self.token_repository.clone())
+    }
+
+    async fn refresh(&self, refresh_token: &String) -> Result<AccessTokenResponse, anyhow::Error> {
+        let raw_response = reqwest::Client::new()
+            .post(self.openid_configuration.token_endpoint.clone())
+            .form(&[
+                ("grant_type", "refresh_token"),
+                ("client_id", self.client_id.as_str()),
+                ("refresh_token", refresh_token.as_str()),
+            ])
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        trace!("Refresh token response: {}", raw_response);
+        let response: AccessTokenResponse = serde_json::from_str(raw_response.as_str())?;
+
+        if response.error.is_some() {
+            return Err(response.as_error());
+        }
+
+        Ok(response)
+    }
+
+    async fn send(
         &self,
         device_authorization_endpoint: String,
     ) -> Result<DeviceCodeResponse, anyhow::Error> {
         debug!(
-            "Sending device code request to {}",
-            device_authorization_endpoint
+            "Sending device code request to {} with scopes {}",
+            device_authorization_endpoint, self.scope,
         );
         let client = reqwest::Client::new();
         let raw_response = client
@@ -65,7 +213,7 @@ pub struct DeviceCodeResponse {
 }
 
 impl DeviceCodeResponse {
-    pub async fn exchange_for_token(
+    async fn exchange_for_token(
         &self,
         token_endpoint: String,
         client_id: String,
@@ -133,7 +281,7 @@ impl DeviceCodeResponse {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Default)]
 pub struct AccessTokenResponse {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
@@ -146,26 +294,26 @@ pub struct AccessTokenResponse {
 }
 
 impl AccessTokenResponse {
-    pub fn has_token(&self) -> bool {
+    fn has_token(&self) -> bool {
         self.access_token.is_some()
     }
 
     #[allow(dead_code)]
-    pub fn is_pending(&self) -> bool {
+    fn is_pending(&self) -> bool {
         self.error
             .clone()
             .is_some_and(|e| e == "authorization_pending")
     }
 
-    pub fn is_expired(&self) -> bool {
+    fn is_expired(&self) -> bool {
         self.error.clone().is_some_and(|e| e == "expired_token")
     }
 
-    pub fn is_denied(&self) -> bool {
+    fn is_denied(&self) -> bool {
         self.error.clone().is_some_and(|e| e == "access_denied")
     }
 
-    pub fn as_error(&self) -> anyhow::Error {
+    fn as_error(&self) -> anyhow::Error {
         anyhow::anyhow!(
             "{}: {}",
             self.error.clone().unwrap_or_default(),

@@ -1,13 +1,26 @@
-use crate::cli::P6mEnvironment;
-use crate::models::openid::AccessTokenResponse;
-use anyhow::Result;
+use crate::models::openid::{AccessTokenResponse, OpenIdDiscoveryDocument};
+use crate::{cli::P6mEnvironment, models::openid::UserInfo};
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use jsonwebtokens::raw::{self, TokenSlices};
 use log::debug;
-use std::fs;
+use serde::Deserialize;
+use std::{collections::BTreeMap, fs};
 
 /// Acts as an abstraction for reading and writing tokens from disk.
+#[derive(Debug, Clone)]
 pub struct TokenRepository {
     auth_dir: Utf8PathBuf,
+    environment: P6mEnvironment,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Claims {
+    pub exp: i64,
+    #[serde(rename = "https://p6m.dev/v1/orgs")]
+    pub orgs: Option<BTreeMap<String, String>>,
+    pub scope: Option<String>,
 }
 
 impl TokenRepository {
@@ -15,7 +28,35 @@ impl TokenRepository {
     pub fn new(environment: &P6mEnvironment) -> Result<TokenRepository> {
         let auth_dir = environment.config_dir().join("auth");
         fs::create_dir_all(&auth_dir)?;
-        Ok(TokenRepository { auth_dir })
+        Ok(TokenRepository {
+            auth_dir,
+            environment: environment.clone(),
+        })
+    }
+
+    /// Appends organization_id to the path for the stored tokens
+    pub fn with_organization_id(mut self, organization_id: &String) -> Result<Self> {
+        self.auth_dir = self.auth_dir.join(organization_id);
+        fs::create_dir_all(&self.auth_dir)?;
+        Ok(self)
+    }
+
+    /// Get the User Info from OpenID
+    pub async fn user_info(&self) -> Result<UserInfo> {
+        let openid_configuration =
+            OpenIdDiscoveryDocument::discover(self.environment.domain.clone()).await?;
+
+        let token = self
+            .read_token(AuthToken::Access)?
+            .context("missing access token")?;
+
+        match UserInfo::request(openid_configuration.userinfo_endpoint, token)
+            .await
+            .context("unable to get user info")
+        {
+            Ok(user_info) => Ok(user_info),
+            Err(_) => Err(anyhow!("unable to get user info")),
+        }
     }
 
     /// Read a token from disk.
@@ -32,6 +73,40 @@ impl TokenRepository {
             debug!("Reading {path}");
             Ok(Some(fs::read_to_string(path)?))
         }
+    }
+
+    /// Reads claims on a token.
+    pub fn read_claims(&self, token_type: AuthToken) -> Result<Option<Claims>> {
+        let claims = match self
+            .read_token(token_type)
+            .context("missing token")?
+            .clone()
+        {
+            Some(token) => {
+                let TokenSlices { claims, .. } =
+                    raw::split_token(&token).context("unable to split token")?;
+                Some(
+                    serde_json::from_value::<Claims>(
+                        raw::decode_json_token_slice(claims).context("unable to decode token")?,
+                    )
+                    .context("unable to parse token")?,
+                )
+            }
+            None => None,
+        };
+
+        debug!("Token claims: {:?}", claims);
+
+        Ok(claims)
+    }
+
+    // Get the expiration date of the desired token
+    pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
+        let claims = self.read_claims(token_type)?.context("missing claims")?;
+
+        Ok(NaiveDateTime::from_timestamp_opt(claims.exp, 0)
+            .map(|dt| dt.and_utc())
+            .context("unable to parse exp claim")?)
     }
 
     /// Write a token to disk.
