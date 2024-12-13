@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use chrono::{Duration, Utc};
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use std::time;
@@ -33,10 +34,12 @@ pub struct DeviceCodeRequest {
     pub client_id: String,
     pub scope: String,
     pub audience: String,
-    interactive_: bool,
+    interactive: bool,
+    force: bool,
     environment: P6mEnvironment,
     token_repository: TokenRepository,
     openid_configuration: OpenIdDiscoveryDocument,
+    organization_id: Option<String>,
 }
 
 impl DeviceCodeRequest {
@@ -52,10 +55,12 @@ impl DeviceCodeRequest {
             // note: openid, email, offline_access are implicity requested
             scope: DeviceCodeRequest::DEFAULT_SCOPES.into(),
             audience: environment.audience.clone(),
-            interactive_: true,
+            interactive: true,
+            force: false,
             environment: environment.clone(),
             token_repository,
             openid_configuration,
+            organization_id: None,
         })
     }
 
@@ -64,18 +69,6 @@ impl DeviceCodeRequest {
         scopes.push(scope);
         scopes.sort();
         scopes.dedup();
-
-        self.scope = scopes.join(" ");
-        self
-    }
-
-    pub fn without_scope(mut self, scope: &str) -> Self {
-        let scopes: Vec<&str> = self
-            .scope
-            .split(" ")
-            .into_iter()
-            .filter(|s| s.to_string() != scope.to_string())
-            .collect::<Vec<_>>();
 
         self.scope = scopes.join(" ");
         self
@@ -111,25 +104,44 @@ impl DeviceCodeRequest {
             .unwrap_or(Self::DEFAULT_SCOPES.to_string());
 
         self = self.with_scope(&format!("org:{}", organization_id));
+        self.organization_id = Some(organization_id.clone());
 
         Ok(self)
     }
 
     pub fn interactive(mut self, interactive: bool) -> Self {
-        self.interactive_ = interactive;
+        self.interactive = interactive;
+        self
+    }
+
+    pub fn force_new(mut self) -> Self {
+        self.force = true;
         self
     }
 
     pub async fn exchange_for_token(&self) -> Result<TokenRepository, anyhow::Error> {
-        let tokens = match self
-            .token_repository
-            .read_token(crate::auth::AuthToken::Refresh)?
-        {
-            None => {
-                if !self.interactive_ {
-                    return Err(anyhow!("Not logged in"));
+        let tokens = match (
+            self.token_repository
+                .clone()
+                .read_token(AuthToken::Refresh)?,
+            (self
+                .token_repository
+                .clone()
+                .read_expiration(AuthToken::Access)?
+                - Utc::now()
+                <= Duration::hours(1)),
+            self.force,
+        ) {
+            (None, _, false) => {
+                return Err(anyhow!("Not logged in (force: false)"));
+            }
+            (None, _, _) | (_, _, true) => {
+                if !self.interactive {
+                    return Err(anyhow!(
+                        "Not logged in (force: {}, interactive: false)",
+                        self.force
+                    ));
                 }
-
                 let device_code_response = self
                     .send(
                         self.openid_configuration
@@ -147,7 +159,8 @@ impl DeviceCodeRequest {
 
                 tokens
             }
-            Some(refresh_token) => self.refresh(&refresh_token).await?,
+            (Some(refresh_token), true, _) => self.refresh(&refresh_token).await?,
+            _ => self.token_repository.current()?,
         };
 
         self.token_repository.write_tokens(&tokens)?;
@@ -155,13 +168,22 @@ impl DeviceCodeRequest {
     }
 
     async fn refresh(&self, refresh_token: &String) -> Result<AccessTokenResponse, anyhow::Error> {
+        let mut form: Vec<(&str, String)> = vec![
+            ("grant_type", "refresh_token".into()),
+            ("client_id", self.client_id.to_string()),
+            ("refresh_token", refresh_token.to_string()),
+        ];
+
+        if let Some(organization_id) = self.organization_id.clone() {
+            form.push((
+                "acr_values".into(),
+                format!("urn:auth:acr:organization-id:{}", organization_id),
+            ));
+        }
+
         let raw_response = reqwest::Client::new()
             .post(self.openid_configuration.token_endpoint.clone())
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("client_id", self.client_id.as_str()),
-                ("refresh_token", refresh_token.as_str()),
-            ])
+            .form(&form)
             .send()
             .await?
             .text()
@@ -220,27 +242,27 @@ impl DeviceCodeResponse {
     ) -> Result<AccessTokenResponse, anyhow::Error> {
         match webbrowser::open(&self.verification_uri_complete) {
             Ok(_) => {
-                println!(
+                eprintln!(
                     "Verify that the browser shows the following code and approve the request."
                 );
             }
             Err(_) => {
-                println!("Failed to launch browser");
-                println!(
+                eprintln!("Failed to launch browser");
+                eprintln!(
                     "Please visit {} and enter the code manually.",
                     self.verification_uri
                 )
             }
         }
 
-        println!();
-        println!("{}", self.user_code);
-        println!();
-        println!(
+        eprintln!();
+        eprintln!("{}", self.user_code);
+        eprintln!();
+        eprintln!(
             "The code will expire in {} minutes.",
             chrono::Duration::seconds(self.expires_in as i64).num_minutes()
         );
-        println!("Waiting for approval...");
+        eprintln!("Waiting for approval...");
 
         loop {
             // Wait the specified amount of time before polling for an access token
@@ -332,6 +354,11 @@ pub struct UserInfo {
     // Only available if the "email" scope was requested on the token
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+
+    // Only available if the "https://p6m.dev/v1/org" claim is on the token
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "https://p6m.dev/v1/org")]
+    pub org: Option<String>,
 }
 
 impl UserInfo {
@@ -350,5 +377,24 @@ impl UserInfo {
             .await?;
         debug!("User info response: {}", raw_response);
         Ok(serde_json::from_str(&raw_response)?)
+    }
+
+    pub fn to_string(&self) -> String {
+        let detail: Vec<String> = match (self.email.as_ref(), self.org.as_ref()) {
+            (Some(email), Some(org)) => {
+                vec![
+                    format!("Organization: {}", org),
+                    format!("Email: {}", email),
+                ]
+            }
+            (Some(email), None) => vec![format!("Email: {}", email)],
+            _ => vec![],
+        };
+
+        detail.join("\n")
+    }
+
+    pub fn to_json(&self) -> Result<String, anyhow::Error> {
+        Ok(serde_json::to_string_pretty(self)?)
     }
 }

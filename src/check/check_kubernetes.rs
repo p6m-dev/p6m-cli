@@ -1,7 +1,6 @@
-use std::io::BufRead;
-use std::process::Command;
-use clap::ArgMatches;
 use crate::check::common::*;
+use clap::ArgMatches;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_kubectl(args)?;
@@ -11,11 +10,19 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_kubectl(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("kubectl", Command::new("kubectl").arg("version"), "kubernetes/#kubectl")
+    perform_check(
+        "kubectl",
+        Command::new("kubectl").arg("version"),
+        "kubernetes/#kubectl",
+    )
 }
 
 fn check_tilt(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Tilt", Command::new("tilt").arg("version"), "kubernetes/#tilt")
+    perform_check(
+        "Tilt",
+        Command::new("tilt").arg("version"),
+        "kubernetes/#tilt",
+    )
 }
 
 fn check_k9s(_args: &ArgMatches) -> anyhow::Result<()> {

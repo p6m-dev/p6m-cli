@@ -3,6 +3,7 @@ use crate::cli::P6mEnvironment;
 use crate::models::openid::DeviceCodeRequest;
 use anyhow::{Context, Error};
 use clap::ArgMatches;
+use log::debug;
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 pub enum Output {
@@ -16,16 +17,45 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
         .try_get_one("output")
         .unwrap_or(Some(&Output::Default));
 
-    let device_code_request = DeviceCodeRequest::new(&environment)
+    let mut device_code_request = DeviceCodeRequest::new(&environment)
         .await?
         .interactive(false);
 
-    let user_info = device_code_request
+    let organization = matches.get_one::<String>("organization-name");
+
+    let mut user_info = device_code_request
         .exchange_for_token()
-        .await?
-        .user_info()
         .await
-        .context("You are not logged in. Please run `p6m login` to log in.")?;
+        .context("You are not logged in. First run `p6m login` to log in.")?
+        .user_info()
+        .await?;
+
+    if let Some(organization) = organization.clone() {
+        device_code_request = device_code_request
+            .with_organization(organization)
+            .await
+            .context("You are not logged in. First run `p6m login` (without --org) to log in.")?;
+
+        let token_repository = match device_code_request.exchange_for_token().await {
+            Ok(token_repoository) => token_repoository,
+            Err(err) => {
+                debug!(
+                    "Unable to passively get token. Turning on interactive+force: {}",
+                    err
+                );
+                // Switch on force new
+                // And allow interactivity
+                device_code_request
+                    .clone()
+                    .interactive(true)
+                    .force_new()
+                    .exchange_for_token()
+                    .await?
+            }
+        };
+
+        user_info = token_repository.user_info().await?;
+    }
 
     println!(
         "{}",
@@ -33,17 +63,11 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
             Some(Output::K8sAuth) =>
                 k8s_auth(
                     device_code_request.clone(),
-                    matches
-                        .try_get_one::<String>("organization-name")
-                        .context("missing organization-name option")?
-                        .context("--org is a required for k8s-auth")?
+                    organization.context("--org is a required for k8s-auth")?
                 )
                 .await?,
-            Some(Output::Json) => serde_json::to_string_pretty(&user_info)?,
-            None | Some(Output::Default) => format!(
-                "Logged in as: {}",
-                user_info.email.context("missing email on access token")?
-            ),
+            Some(Output::Json) => user_info.to_json()?,
+            None | Some(Output::Default) => user_info.to_string(),
         }
     );
 
@@ -55,10 +79,8 @@ async fn k8s_auth(
     organization: &String,
 ) -> Result<String, Error> {
     let token_repository = device_code_request
-        .interactive(true)
         .with_organization(organization)
         .await?
-        .without_scope("login:cli")
         .with_scope("login:kubernetes")
         .exchange_for_token()
         .await?;

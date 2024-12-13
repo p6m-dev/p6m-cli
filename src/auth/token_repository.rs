@@ -102,7 +102,7 @@ impl TokenRepository {
 
     // Get the expiration date of the desired token
     pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
-        let claims = self.read_claims(token_type)?.context("missing claims")?;
+        let claims = self.read_claims(token_type)?.unwrap_or_default();
 
         Ok(NaiveDateTime::from_timestamp_opt(claims.exp, 0)
             .map(|dt| dt.and_utc())
@@ -125,6 +125,16 @@ impl TokenRepository {
         self.write_token(AuthToken::Id, tokens.id_token.as_ref())?;
         self.write_token(AuthToken::Refresh, tokens.refresh_token.as_ref())?;
         Ok(())
+    }
+
+    pub fn current(&self) -> Result<AccessTokenResponse> {
+        Ok(AccessTokenResponse {
+            access_token: self.read_token(AuthToken::Access)?,
+            refresh_token: self.read_token(AuthToken::Refresh)?,
+            id_token: self.read_token(AuthToken::Id)?,
+            error: None,
+            error_description: None,
+        })
     }
 
     /// The root directory where auth-related files are stored.

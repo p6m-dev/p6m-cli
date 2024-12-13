@@ -1,21 +1,20 @@
-use clap::{ArgMatches, ValueEnum};
+use clap::ArgMatches;
 use strum::IntoEnumIterator;
 
-mod common;
+mod check_archetect;
+mod check_artifact_management;
+mod check_docker;
+mod check_dotnet;
 mod check_java;
 mod check_javascript;
-mod check_python;
-mod check_dotnet;
-mod check_scm;
-mod check_docker;
 mod check_kubernetes;
-mod check_artifact_management;
-mod check_archetect;
+mod check_python;
+mod check_scm;
+mod common;
 
 pub use common::Ecosystem;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
-
     if let Some(ecosystems) = args.get_many::<Ecosystem>("ecosystem") {
         for ecosystem in ecosystems {
             check_ecosystem(ecosystem, args)?;

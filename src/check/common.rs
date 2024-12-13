@@ -1,13 +1,13 @@
-use std::io::{BufRead, Lines};
-use std::process::Command;
 use clap::builder::PossibleValue;
 use clap::ValueEnum;
+use std::io::{BufRead, Lines};
+use std::process::Command;
 use strum_macros::EnumIter;
 
 pub const CHECK_PREFIX: &str = "🔍";
 pub const CHECK_SUCCESS: &str = "🟢";
 pub const CHECK_ERROR: &str = "🔴";
-pub const CHECK_WARN: &str = "🟡";
+// pub const CHECK_WARN: &str = "🟡";
 pub const DOCS_PREFIX: &str = "https://docs.p6m.dev/workstation";
 
 pub fn print_see_also(path: &str) {
@@ -27,7 +27,11 @@ pub fn print_success_lines(lines: Lines<&[u8]>, all_lines: bool) {
         });
 }
 
-pub fn perform_check(check_name: &str, command: &mut Command, doc_path: &str) -> anyhow::Result<()> {
+pub fn perform_check(
+    check_name: &str,
+    command: &mut Command,
+    doc_path: &str,
+) -> anyhow::Result<()> {
     println!("\n{CHECK_PREFIX} Checking {check_name}");
 
     match command.output() {

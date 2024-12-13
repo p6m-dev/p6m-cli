@@ -361,7 +361,7 @@ fn create_octocrab() -> Result<Octocrab, Error> {
 #[async_trait::async_trait]
 trait OctocrabExtensions {
     async fn list_orgs(&self) -> octocrab::Result<Page<Organization>>;
-    async fn create_repo(&self, org: String, repo: String) -> octocrab::Result<()>;
+    // async fn create_repo(&self, org: String, repo: String) -> octocrab::Result<()>;
     async fn create_org_repo(&self, repository: &OrgRepository) -> octocrab::Result<()>;
 }
 
@@ -371,15 +371,15 @@ impl OctocrabExtensions for Octocrab {
         self.get("/user/orgs", None::<&()>).await
     }
 
-    async fn create_repo(&self, org: String, repo: String) -> octocrab::Result<()> {
-        let repository = Repository::new(org.clone(), repo);
+    // async fn create_repo(&self, org: String, repo: String) -> octocrab::Result<()> {
+    //     let repository = Repository::new(org.clone(), repo);
 
-        let _response: octocrab::models::Repository = self
-            .post(format!("/orgs/{}/repos", org), Some(&repository))
-            .await?;
+    //     let _response: octocrab::models::Repository = self
+    //         .post(format!("/orgs/{}/repos", org), Some(&repository))
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     async fn create_org_repo(&self, repository: &OrgRepository) -> octocrab::Result<()> {
         let _response: octocrab::models::Repository = self

@@ -1,10 +1,10 @@
+use crate::check::Ecosystem;
 use crate::version;
 use crate::{models::artifact, whoami};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
 use std::fs::create_dir_all;
-use crate::check::Ecosystem;
 
 pub fn command() -> Command {
     clap::command!()
@@ -187,6 +187,13 @@ pub fn command() -> Command {
         )
         .subcommand(Command::new("login")
             .about("Login to p6m services")
+            .arg(
+                Arg::new("organization-name")
+                    .long("org")
+                    .required(false)
+                    .action(clap::ArgAction::Set)
+                    .help("The JV Organization Name")
+            )
         )
         .subcommand(Command::new("whoami")
             .about("Display information about the currently logged in user")
