@@ -2,6 +2,7 @@ use crate::auth::AuthToken;
 use crate::cli::P6mEnvironment;
 use crate::models::openid::DeviceCodeRequest;
 use anyhow::{Context, Error};
+use base64::prelude::*;
 use clap::ArgMatches;
 use log::debug;
 
@@ -64,7 +65,7 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
                 k8s_auth(
                     device_code_request.clone(),
                     organization.context("--org is a required for k8s-aws auth")?,
-                    "k8s-aws-v1.",
+                    TokenFormat::K8sAwsV1,
                 )
                 .await?,
             Some(Output::Json) => user_info.to_json()?,
@@ -75,10 +76,14 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
     Ok(())
 }
 
+enum TokenFormat {
+    K8sAwsV1,
+}
+
 async fn k8s_auth(
     device_code_request: DeviceCodeRequest,
     organization: &String,
-    token_prefix: &str,
+    token_format: TokenFormat,
 ) -> Result<String, Error> {
     let token_repository = device_code_request
         .with_organization(organization)
@@ -95,7 +100,9 @@ async fn k8s_auth(
         "spec": {},
         "status": {
             "expirationTimestamp": token_repository.read_expiration(AuthToken::Access)?,
-            "token": format!("{}{}", token_prefix, token.context("missing token")?),
+            "token": match token_format {
+                TokenFormat::K8sAwsV1 => format!("k8s-aws-v1.{}", BASE64_STANDARD.encode(token.context("missing token")?).to_string()),
+            },
         },
     })
     .to_string())

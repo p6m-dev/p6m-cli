@@ -2,7 +2,7 @@ use crate::models::openid::{AccessTokenResponse, OpenIdDiscoveryDocument};
 use crate::{cli::P6mEnvironment, models::openid::UserInfo};
 use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
 use log::debug;
 use serde::Deserialize;
@@ -104,9 +104,7 @@ impl TokenRepository {
     pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
         let claims = self.read_claims(token_type)?.unwrap_or_default();
 
-        Ok(NaiveDateTime::from_timestamp_opt(claims.exp, 0)
-            .map(|dt| dt.and_utc())
-            .context("unable to parse exp claim")?)
+        Ok(DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?)
     }
 
     /// Write a token to disk.
