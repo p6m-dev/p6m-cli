@@ -2,6 +2,7 @@ use crate::auth::AuthToken;
 use crate::cli::P6mEnvironment;
 use crate::models::openid::DeviceCodeRequest;
 use anyhow::{Context, Error};
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::prelude::*;
 use clap::ArgMatches;
 use log::debug;
@@ -101,7 +102,7 @@ async fn k8s_auth(
         "status": {
             "expirationTimestamp": token_repository.read_expiration(AuthToken::Access)?,
             "token": match token_format {
-                TokenFormat::K8sAwsV1 => format!("k8s-aws-v1.{}", BASE64_STANDARD.encode(token.context("missing token")?).to_string()),
+                TokenFormat::K8sAwsV1 => format!("k8s-aws-v1.{}", BASE64_URL_SAFE_NO_PAD.encode(token.context("missing token")?).to_string()),
             },
         },
     })
