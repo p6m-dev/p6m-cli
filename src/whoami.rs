@@ -9,7 +9,7 @@ use log::debug;
 pub enum Output {
     Default,
     Json,
-    K8sAuth,
+    K8sAws,
 }
 
 pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Result<(), Error> {
@@ -60,10 +60,11 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
     println!(
         "{}",
         match output {
-            Some(Output::K8sAuth) =>
+            Some(Output::K8sAws) =>
                 k8s_auth(
                     device_code_request.clone(),
-                    organization.context("--org is a required for k8s-auth")?
+                    organization.context("--org is a required for k8s-aws auth")?,
+                    "k8s-aws-v1.",
                 )
                 .await?,
             Some(Output::Json) => user_info.to_json()?,
@@ -77,6 +78,7 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 async fn k8s_auth(
     device_code_request: DeviceCodeRequest,
     organization: &String,
+    token_prefix: &str,
 ) -> Result<String, Error> {
     let token_repository = device_code_request
         .with_organization(organization)
@@ -93,7 +95,7 @@ async fn k8s_auth(
         "spec": {},
         "status": {
             "expirationTimestamp": token_repository.read_expiration(AuthToken::Access)?,
-            "token": token.context("missing token")?,
+            "token": format!("{}{}", token_prefix, token.context("missing token")?),
         },
     })
     .to_string())
