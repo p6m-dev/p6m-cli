@@ -70,6 +70,8 @@ impl DeviceCodeRequest {
         scopes.sort();
         scopes.dedup();
 
+        debug!("Setting scopes: {:?}", scopes);
+
         self.scope = scopes.join(" ");
         self
     }

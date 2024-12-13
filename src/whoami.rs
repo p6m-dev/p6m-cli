@@ -1,9 +1,7 @@
-use crate::auth::AuthToken;
+use crate::auth::{AuthToken, TokenRepository};
 use crate::cli::P6mEnvironment;
 use crate::models::openid::DeviceCodeRequest;
 use anyhow::{Context, Error};
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use base64::prelude::*;
 use clap::ArgMatches;
 use log::debug;
 
@@ -11,7 +9,7 @@ use log::debug;
 pub enum Output {
     Default,
     Json,
-    K8sAws,
+    K8sAuth,
 }
 
 pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Result<(), Error> {
@@ -25,20 +23,19 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 
     let organization = matches.get_one::<String>("organization-name");
 
-    let mut user_info = device_code_request
+    let mut token_repository = device_code_request
         .exchange_for_token()
         .await
-        .context("You are not logged in. First run `p6m login` to log in.")?
-        .user_info()
-        .await?;
+        .context("You are not logged in. First run `p6m login` to log in.")?;
 
     if let Some(organization) = organization.clone() {
         device_code_request = device_code_request
             .with_organization(organization)
             .await
-            .context("You are not logged in. First run `p6m login` (without --org) to log in.")?;
+            .context("You are not logged in. First run `p6m login` (without --org) to log in.")?
+            .with_scope("login:kubernetes");
 
-        let token_repository = match device_code_request.exchange_for_token().await {
+        token_repository = match device_code_request.exchange_for_token().await {
             Ok(token_repoository) => token_repoository,
             Err(err) => {
                 debug!(
@@ -51,22 +48,22 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
                     .clone()
                     .interactive(true)
                     .force_new()
+                    .with_scope("login:kubernetes")
                     .exchange_for_token()
                     .await?
             }
         };
-
-        user_info = token_repository.user_info().await?;
     }
+
+    let user_info = token_repository.user_info().await?;
 
     println!(
         "{}",
         match output {
-            Some(Output::K8sAws) =>
+            Some(Output::K8sAuth) =>
                 k8s_auth(
-                    device_code_request.clone(),
-                    organization.context("--org is a required for k8s-aws auth")?,
-                    TokenFormat::K8sAwsV1,
+                    &token_repository,
+                    organization.context("--org is a required for --output k8s-auth")?,
                 )
                 .await?,
             Some(Output::Json) => user_info.to_json()?,
@@ -77,34 +74,21 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
     Ok(())
 }
 
-enum TokenFormat {
-    K8sAwsV1,
-}
-
 async fn k8s_auth(
-    device_code_request: DeviceCodeRequest,
-    organization: &String,
-    token_format: TokenFormat,
+    token_repository: &TokenRepository,
+    _organization: &String,
+    // token_format: TokenFormat,
 ) -> Result<String, Error> {
-    let token_repository = device_code_request
-        .with_organization(organization)
-        .await?
-        .with_scope("login:kubernetes")
-        .exchange_for_token()
-        .await?;
-
-    let token = token_repository.read_token(AuthToken::Access)?;
-
     Ok(serde_json::json!({
         "kind": "ExecCredential",
         "apiVersion": "client.authentication.k8s.io/v1beta1",
-        "spec": {},
-        "status": {
-            "expirationTimestamp": token_repository.read_expiration(AuthToken::Access)?,
-            "token": match token_format {
-                TokenFormat::K8sAwsV1 => format!("k8s-aws-v1.{}", BASE64_URL_SAFE_NO_PAD.encode(token.context("missing token")?).to_string()),
-            },
+        "spec": {
+            "interactive": false
         },
+        "status": {
+            "expirationTimestamp": token_repository.clone().read_expiration(AuthToken::Id)?,
+            "token": token_repository.clone().read_token(AuthToken::Id)?,
+        }
     })
     .to_string())
 }
