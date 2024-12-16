@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use chrono::{Duration, Utc};
+use itertools::Itertools;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use std::time;
@@ -40,10 +41,11 @@ pub struct DeviceCodeRequest {
     token_repository: TokenRepository,
     openid_configuration: OpenIdDiscoveryDocument,
     organization_id: Option<String>,
+    desired_claims: Vec<String>,
 }
 
 impl DeviceCodeRequest {
-    pub const DEFAULT_SCOPES: &str = "openid email offline_access";
+    pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
 
     pub async fn new(environment: &P6mEnvironment) -> Result<Self, anyhow::Error> {
         let token_repository = TokenRepository::new(&environment)?;
@@ -61,6 +63,7 @@ impl DeviceCodeRequest {
             token_repository,
             openid_configuration,
             organization_id: None,
+            desired_claims: vec![],
         })
     }
 
@@ -70,8 +73,14 @@ impl DeviceCodeRequest {
         scopes.sort();
         scopes.dedup();
 
-        debug!("Setting scopes: {:?}", scopes);
+        if scope.starts_with("login:") {
+            let claim = scope.split(":").join("/");
+            let desired_claim = format!("https://p6m.dev/v1/permission/{}", claim);
+            debug!("Adding desired claim: {}", desired_claim);
+            self.desired_claims.push(desired_claim);
+        }
 
+        debug!("Setting scopes: {:?}", scopes);
         self.scope = scopes.join(" ");
         self
     }
@@ -125,6 +134,9 @@ impl DeviceCodeRequest {
         let tokens = match (
             self.token_repository
                 .clone()
+                .has_claims(AuthToken::Access, &self.desired_claims)?,
+            self.token_repository
+                .clone()
                 .read_token(AuthToken::Refresh)?,
             (self
                 .token_repository
@@ -134,10 +146,10 @@ impl DeviceCodeRequest {
                 <= Duration::hours(1)),
             self.force,
         ) {
-            (None, _, false) => {
+            (_, None, _, false) => {
                 return Err(anyhow!("Not logged in (force: false)"));
             }
-            (None, _, _) | (_, _, true) => {
+            (false, _, _, _) | (_, None, _, _) | (_, _, _, true) => {
                 if !self.interactive {
                     return Err(anyhow!(
                         "Not logged in (force: {}, interactive: false)",
@@ -161,7 +173,7 @@ impl DeviceCodeRequest {
 
                 tokens
             }
-            (Some(refresh_token), true, _) => self.refresh(&refresh_token).await?,
+            (_, Some(refresh_token), true, _) => self.refresh(&refresh_token).await?,
             _ => self.token_repository.current()?,
         };
 

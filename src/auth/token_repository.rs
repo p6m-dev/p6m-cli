@@ -100,11 +100,44 @@ impl TokenRepository {
         Ok(claims)
     }
 
+    pub fn claim_keys(&self, token_type: AuthToken) -> Result<Vec<String>> {
+        let claims = match self
+            .read_token(token_type)
+            .context("missing token")?
+            .clone()
+        {
+            Some(token) => {
+                let TokenSlices { claims, .. } =
+                    raw::split_token(&token).context("unable to split token")?;
+
+                raw::decode_json_token_slice(claims)?
+                    .as_object()
+                    .context("unable to convert claims to object")?
+                    .keys()
+                    .map(|k| k.to_string())
+                    .collect()
+            }
+            None => vec![],
+        };
+
+        Ok(claims)
+    }
+
     // Get the expiration date of the desired token
     pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
         let claims = self.read_claims(token_type)?.unwrap_or_default();
 
         Ok(DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?)
+    }
+
+    pub fn has_claims(self, token_type: AuthToken, desired_claims: &Vec<String>) -> Result<bool> {
+        let actual_claims = self.claim_keys(token_type)?;
+
+        debug!("Actual claims: {:?}", actual_claims);
+
+        Ok(desired_claims
+            .into_iter()
+            .all(|c| actual_claims.contains(c)))
     }
 
     /// Write a token to disk.
