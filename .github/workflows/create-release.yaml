@@ -62,32 +62,48 @@ jobs:
           git tag -a v${{ steps.version.outputs.value }} -m "Version ${{ steps.version.outputs.value }}"
           git push --tags
 
+  create-release:
+    name: Create Github Release
+    runs-on: ubuntu-latest
+    needs: [bump]
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Create Github Release Draft
+        shell: bash
+        run: gh release create v${{ needs.bump.outputs.version }} --draft --verify-tag --title v${{ needs.bump.outputs.version }}
+
+
   build:
     permissions:
       contents: read
       id-token: write
 
-    needs: [bump]
+    needs: [bump, 'create-release']
     strategy:
       fail-fast: true
       matrix:
         include:
           - os: ubuntu-latest
+            platform: linux
             suffix: linux-x86_64
             binary: target/release/p6m
             artifact: p6m.zip
             blob: linux-x86_64.zip
           - os: macos-latest
+            platform: macos
             suffix: darwin-arm64
             binary: target/release/p6m
             artifact: p6m.zip
             blob: darwin-arm64.zip
           - os: macos-13
+            platform: macos
             suffix: darwin-x86_64
             binary: target/release/p6m
             artifact: p6m.zip
             blob: darwin-x86_64.zip
           - os: windows-latest
+            platform: windows
             suffix: windows-x86_64
             binary: target\release\p6m.exe
             artifact: p6m-installer.exe
@@ -138,7 +154,7 @@ jobs:
 
       # Linux specific steps
       - name: Archive Binaries (*nix)
-        if: matrix.os != 'windows-latest'
+        if: matrix.platform != 'windows'
         uses: vimtor/action-zip@v1.2
         with:
           files: ${{ matrix.binary }}
@@ -146,7 +162,7 @@ jobs:
 
       - name: Upload to Azure Blob Storage (*nix)
         id: nix_upload
-        if: matrix.os != 'windows-latest'
+        if: matrix.platform != 'windows'
         run: |
           az storage blob upload --auth-mode login --account-name $STORAGE_ACCOUNT_NAME --container-name $STORAGE_CONTAINER_NAME --file $ARTIFACT_PATH --name $BLOB_NAME --overwrite
           cat > $GITHUB_STEP_SUMMARY <<SUMMARY
@@ -161,7 +177,7 @@ jobs:
 
       # Windows specific steps
       - name: Create Installer (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.platform == 'windows'
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
         env:
           P6M_VERSION: ${{ needs.bump.outputs.version }}
@@ -172,7 +188,7 @@ jobs:
 
       - name: Upload to Azure Blob Storage (Windows)
         id: win_upload
-        if: matrix.os == 'windows-latest'
+        if: matrix.platform == 'windows'
         run: |
           az storage blob upload --auth-mode login --account-name $env:STORAGE_ACCOUNT_NAME --container-name $env:STORAGE_CONTAINER_NAME --file $env:ARTIFACT_PATH --name $env:BLOB_NAME --overwrite
           $Summary = @"
@@ -189,26 +205,26 @@ jobs:
           "@
           $Output | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-  update_homebrew_formula:
-    needs: [bump, build]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Dispatch event to p6m-dev/homebrew-tap
-        uses: ph-fritsche/action-dispatch@v1
-        with:
-          token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
-          type: repository
-          repo: p6m-dev/homebrew-tap
-          ident: update-formula
-          payload: |
-            {
-              "name": "p6m",
-              "version": "${{ needs.bump.outputs.version }}",
-              "linux_x64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
-              "darwin_arm64_sha256": "${{ needs.build.outputs.darwin-arm64_sha256 }}",
-              "darwin_x64_sha256": "${{ needs.build.outputs.darwin-x86_64_sha256 }}"
-            }
+#  update_homebrew_formula:
+#    needs: [bump, build]
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Dispatch event to p6m-dev/homebrew-tap
+#        uses: ph-fritsche/action-dispatch@v1
+#        with:
+#          token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
+#          type: repository
+#          repo: p6m-dev/homebrew-tap
+#          ident: update-formula
+#          payload: |
+#            {
+#              "name": "p6m",
+#              "version": "${{ needs.bump.outputs.version }}",
+#              "linux_x64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
+#              "darwin_arm64_sha256": "${{ needs.build.outputs.darwin-arm64_sha256 }}",
+#              "darwin_x64_sha256": "${{ needs.build.outputs.darwin-x86_64_sha256 }}"
+#            }
 
   # NOTE: Disabled until original winget package is accepted to avoid conflicts
   # update_winget_package:
