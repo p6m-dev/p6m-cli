@@ -17,8 +17,11 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+permissions: write-all
+
 jobs:
   bump:
+
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
@@ -62,7 +65,7 @@ jobs:
           git tag -a v${{ steps.version.outputs.value }} -m "Version ${{ steps.version.outputs.value }}"
           git push --tags
 
-  create-release:
+  create-release-draft:
     name: Create Github Release
     runs-on: ubuntu-latest
     needs: [bump]
@@ -79,7 +82,7 @@ jobs:
       contents: read
       id-token: write
 
-    needs: [bump, 'create-release']
+    needs: [bump, 'create-release-draft']
     strategy:
       fail-fast: true
       matrix:
