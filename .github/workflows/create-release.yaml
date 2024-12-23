@@ -31,7 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get the version before bumping
+      - name: Gather Current Project Version
         id: previous_version
         uses: SebRollen/toml-action@v1.2.0
         with:
@@ -53,50 +53,29 @@ jobs:
           git commit -m "[skip ci] Bump Version"
           git push
 
-      - name: Get the version after bumping
+      - name: Gather Tagged Project Version
         id: version
         uses: SebRollen/toml-action@v1.2.0
         with:
           file: Cargo.toml
           field: package.version
 
-      - name: Tag the current commit with the version
+      - name: Tag Current Commit
         run: |
           git tag -a v${{ steps.version.outputs.value }} -m "Version ${{ steps.version.outputs.value }}"
           git push --tags
 
-  create-release:
-    name: create-release-draft
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Get the release version from the tag
-        if: env.VERSION == ''
-        run: echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
-      - name: Show the version
-        run: |
-          echo "version is: $VERSION"
-      - name: Check that tag version and Cargo.toml version are the same
-        shell: bash
-        run: |
-          if ! grep -q "version = \"${VERSION:1}\"" Cargo.toml; then
-            echo "version does not match Cargo.toml" >&2
-            exit 1
-          fi
       - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create $VERSION --draft --verify-tag --title $VERSION
-    outputs:
-      version: ${{ env.VERSION }}
-
+        run: gh release create v${{ steps.version.outputs.value }} --draft --verify-tag --title v${{ steps.version.outputs.value }}
 
   build:
     permissions:
       contents: read
       id-token: write
 
-    needs: [bump, 'create-release-draft']
+    needs: [bump]
     strategy:
       fail-fast: true
       matrix:
