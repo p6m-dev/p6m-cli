@@ -107,7 +107,7 @@ async fn set_context(
         }
     };
     let platform_registry_url = match active_storage {
-        StorageProvider::Artifactory => "p6m.jfrog.io/artifactory/api/npm/p6m-npm/",
+        StorageProvider::Artifactory => "p6m.jfrog.io/artifactory/api/npm/p6m-dev-npm/",
         StorageProvider::Cloudsmith => "npm.cloudsmith.io/p6m-dev/p6m-run/",
     };
     let auth_config = match active_storage {
