@@ -113,7 +113,8 @@ jobs:
         if: matrix.platform == 'windows' 
         shell: bash
         run: |
-          VCPKG_ROOT=$env.VCPKG_INSTALLATION_ROOT
+          VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV 
           vcpkg install openssl:x64-windows-static-md
 
       - name: Build Binary
