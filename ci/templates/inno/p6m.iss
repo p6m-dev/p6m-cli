@@ -1,4 +1,5 @@
- See https://jrsoftware.org/isinfo.php for more information on Inno Setup
+; See https://jrsoftware.org/isinfo.php for more information on Inno Setup
+
 [Setup]
 AppName={#GetEnv('BINARY_DESCRIPTION')}
 AppVersion={#GetEnv('VERSION')}
