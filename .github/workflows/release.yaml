@@ -156,7 +156,7 @@ jobs:
             echo "${{ matrix.platform }}-${{ matrix.arch}}_sha256=$(cat $archive_sum | awk '{print $1}')" >> $GITHUB_OUTPUT
           fi          
           echo "ARCHIVE=${archive}" >> $GITHUB_ENV
-          echo "ARCHIVE_PREFIX=${archive_prefix} >> $GITHUB_ENV
+          echo "ARCHIVE_PREFIX=${archive_prefix}" >> $GITHUB_ENV
           echo "ARCHIVE_SUM=${archive_sum}" >> $GITHUB_ENV
 
       - name: Upload Release Archive
@@ -171,7 +171,7 @@ jobs:
         if: matrix.platform == 'windows'
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
-          path: ci/templates/${{ env.BINARY-NAME }}.iss
+          path: ci/templates/inno/${{ env.BINARY-NAME }}.iss
           options: /O+
 
       - name: Upload Windows Installer
@@ -180,7 +180,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          version="${{ needs.create-release.outputs.version }}"
           gh release upload "${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
 
   post-release:
