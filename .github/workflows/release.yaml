@@ -135,7 +135,7 @@ jobs:
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
         run: strip "$BINARY_PATH"
 
-      - name: Create Archive
+      - name: Create Release Archive
         id: create-archive
         shell: bash
         run: |
@@ -171,7 +171,7 @@ jobs:
         if: matrix.platform == 'windows'
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
-          path: ci/templates/inno/${{ env.BINARY-NAME }}.iss
+          path: ci/templates/inno/${{ env.BINARY_NAME }}.iss
           options: /O+
 
       - name: Upload Windows Installer

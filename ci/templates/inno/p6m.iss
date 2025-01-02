@@ -1,15 +1,14 @@
  See https://jrsoftware.org/isinfo.php for more information on Inno Setup
 [Setup]
-AppName=p6m CLI
+AppName={#GetEnv('BINARY_DESCRIPTION')}
 AppVersion={#GetEnv('VERSION')}
 AppPublisher=p6m Dev
-AppPublisherURL=https://docs.p6m.dev
+AppPublisherURL={#GetEnv('BINARY_HOMEPAGE')}
 DefaultDirName={autopf}\P6M
 DefaultGroupName=P6M
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 AllowNoIcons=yes
-OutputBaseFilename=p6m-installer
 Compression=zip
 SolidCompression=no
 WizardStyle=modern
