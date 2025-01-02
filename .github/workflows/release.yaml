@@ -110,7 +110,7 @@ jobs:
         uses: Swatinem/rust-cache@v2 
 
       - name: Install Windows Dependencies
-        if: runner.os == "Windows"
+        if: ${{ runner.os == "Windows" }}
         shell: bash
         run: |
           VCPKG_ROOT=$env.VCPKG_INSTALLATION_ROOT
