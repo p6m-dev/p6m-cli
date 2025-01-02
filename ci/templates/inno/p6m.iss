@@ -1,7 +1,7 @@
-; See https://jrsoftware.org/isinfo.php for more information on Inno Setup
+ See https://jrsoftware.org/isinfo.php for more information on Inno Setup
 [Setup]
 AppName=p6m CLI
-AppVersion={#GetEnv('P6M_VERSION')}
+AppVersion={#GetEnv('VERSION')}
 AppPublisher=p6m Dev
 AppPublisherURL=https://docs.p6m.dev
 DefaultDirName={autopf}\P6M
@@ -14,7 +14,7 @@ Compression=zip
 SolidCompression=no
 WizardStyle=modern
 SourceDir={#GetEnv('GITHUB_WORKSPACE')}
-OutputBaseFilename=p6m-cli-{#GetEnv('VERSION')}-windows_x64-installer
+OutputBaseFilename={#GetEnv('ARCHIVE_PREFIX')}-installer
 OutputDir=.\target
 UsePreviousAppDir=false
 UninstallDisplayName=p6m CLI
@@ -22,7 +22,7 @@ Uninstallable=true
 
 [Files]
 Source: "pkg\windows\PathMgr.dll"; DestDir: "{app}"; Flags: uninsneveruninstall
-Source: "{#GetEnv('P6M_BINARY')}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#GetEnv('BINARY_NAME')}.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
 Name: modifypath; Description: "&Add to Path"

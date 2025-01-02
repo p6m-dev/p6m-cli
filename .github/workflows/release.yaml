@@ -94,12 +94,15 @@ jobs:
       macos-x86_64_archive: ${{ steps.create-archive.outputs.macos-x86_64_archive }}
       macos-x86_64_sha256: ${{ steps.create-archive.outputs.macos-x86_64_sha256 }}
 
+    env:
+      VERSION: ${{ needs.pre-release.outputs.version }}
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Tag
         uses: actions/checkout@v4
         with:
-          ref: v${{ needs.pre-release.outputs.version }}
+          ref: v${{ env.VERSION }}
 
       - name: Build ${{ matrix.platform }}-${{ matrix.arch }}
         shell: bash
@@ -136,8 +139,7 @@ jobs:
         id: create-archive
         shell: bash
         run: |
-          version="v${{ needs.pre-release.outputs.version }}"
-          archive_prefix="${BINARY_NAME}-${version}-${{matrix.platform}}-${{matrix.arch}}"
+          archive_prefix="${BINARY_NAME}-${VERSION}-${{matrix.platform}}-${{matrix.arch}}"
           mkdir -p "${archive_prefix}" >> $GITHUB_ENV
           cp "$BINARY_PATH" "$archive_prefix"
           if [ "${{ matrix.platform }}" = "windows" ]; then
@@ -150,10 +152,11 @@ jobs:
             archive_sum=${archive_prefix}.tar.gz.sha256
             tar czf "${archive}" "${archive_prefix}"
             shasum -a 256 "${archive}" > "${archive_sum}"
-            echo "${{ matrix.platform }}-${{ matrix.arch}}_archive=${version}/${archive}" >> $GITHUB_OUTPUT
+            echo "${{ matrix.platform }}-${{ matrix.arch}}_archive=${VERSION}/${archive}" >> $GITHUB_OUTPUT
             echo "${{ matrix.platform }}-${{ matrix.arch}}_sha256=$(cat $archive_sum | awk '{print $1}')" >> $GITHUB_OUTPUT
           fi          
           echo "ARCHIVE=${archive}" >> $GITHUB_ENV
+          echo "ARCHIVE_PREFIX=${archive_prefix} >> $GITHUB_ENV
           echo "ARCHIVE_SUM=${archive_sum}" >> $GITHUB_ENV
 
       - name: Upload Release Archive
@@ -161,9 +164,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          version="${{ needs.pre-release.outputs.version }}"
-          gh release upload v"$version" "${ARCHIVE}" "${ARCHIVE_SUM}"
+          gh release upload v"${VERSION}" "${ARCHIVE}" "${ARCHIVE_SUM}"
 
+      # Windows specific steps
+      - name: Create Windows Installer
+        if: matrix.platform == 'windows'
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: ci/templates/${{ env.BINARY-NAME }}.iss
+          options: /O+
+
+      - name: Upload Windows Installer
+        if: matrix.platform == 'windows'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          version="${{ needs.create-release.outputs.version }}"
+          gh release upload "${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
 
   post-release:
     name: Post Release
