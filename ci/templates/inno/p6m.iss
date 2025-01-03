@@ -22,7 +22,7 @@ Uninstallable=true
 
 [Files]
 Source: "ci\templates\inno\PathMgr.dll"; DestDir: "{app}"; Flags: uninsneveruninstall
-Source: "{#GetEnv('BINARY_NAME')}.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "target\release\{#GetEnv('BINARY_NAME')}.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
 Name: modifypath; Description: "&Add to Path"
