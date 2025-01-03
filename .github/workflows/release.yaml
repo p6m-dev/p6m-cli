@@ -180,7 +180,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release upload "${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
+          gh release upload v${VERSION} "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
 
   post-release:
     name: Post Release
@@ -194,9 +194,8 @@ jobs:
       - name: Finalize Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          version: ${{ needs.pre-release.outputs.version }}
         shell: bash
-        run: gh release edit v${version} --draft=false --latest
+        run: gh release edit v${VERSION} --draft=false --latest
 
 
   update_homebrew_formula:
@@ -216,7 +215,7 @@ jobs:
               "binary": "${{ env.BINARY_NAME }}",
               "homepage": "${{ env.BINARY_HOMEPAGE }}",
               "description": "${{ env.BINARY_DESCRIPTION }}",
-              "version": "${{ needs.pre-release.outputs.version }}",
+              "version": "${{ env.VERSION }}",
               "linux-x86_64_archive": "${{ env.DOWNLOAD_PREFIX }}/${{ needs.build.outputs.linux-x86_64_archive }}",
               "linux-x86_64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
               "macos-arm64_archive": "${{ env.DOWNLOAD_PREFIX }}/${{ needs.build.outputs.macos-arm64_archive }}",
