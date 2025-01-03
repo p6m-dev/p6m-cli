@@ -180,12 +180,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release upload v${VERSION} "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
+          gh release upload v"${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
 
   post-release:
     name: Post Release
     runs-on: ubuntu-latest
     needs: [pre-release, build]
+    env:
+      VERSION: ${{ needs.pre-release.outputs.version }}
     steps:
       - name: Checkout Tag
         uses: actions/checkout@v4
@@ -195,13 +197,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: gh release edit v${VERSION} --draft=false --latest
+        run: gh release edit v"${VERSION}" --draft=false --latest
 
 
   update_homebrew_formula:
     name: Update Homebrew Forumula
     needs: [pre-release, build]
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.pre-release.outputs.version }}
     steps:
       - name: Dispatch event to ${{ env.DESTINATION_HOMEBREW_TAP }}
         uses: ph-fritsche/action-dispatch@v1
