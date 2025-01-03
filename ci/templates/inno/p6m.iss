@@ -21,7 +21,7 @@ UninstallDisplayName=p6m CLI
 Uninstallable=true
 
 [Files]
-Source: "pkg\windows\PathMgr.dll"; DestDir: "{app}"; Flags: uninsneveruninstall
+Source: "ci\templates\inno\PathMgr.dll"; DestDir: "{app}"; Flags: uninsneveruninstall
 Source: "{#GetEnv('BINARY_NAME')}.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Tasks]
