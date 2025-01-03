@@ -62,8 +62,8 @@ jobs:
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          version: ${{ steps.capture.outputs.version }}
-        run: gh release create v${version} --draft --verify-tag --title v${version}
+          VERSION: v${{ steps.capture.outputs.version }}
+        run: gh release create ${VERSION} --draft --verify-tag --title ${VERSION}
 
 
   build:
@@ -95,14 +95,14 @@ jobs:
       macos-x86_64_sha256: ${{ steps.create-archive.outputs.macos-x86_64_sha256 }}
 
     env:
-      VERSION: ${{ needs.pre-release.outputs.version }}
+      VERSION: v${{ needs.pre-release.outputs.version }}
 
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Tag
         uses: actions/checkout@v4
         with:
-          ref: v${{ env.VERSION }}
+          ref: ${{ env.VERSION }}
 
       - name: Build ${{ matrix.platform }}-${{ matrix.arch }}
         shell: bash
@@ -164,7 +164,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release upload v"${VERSION}" "${ARCHIVE}" "${ARCHIVE_SUM}"
+          gh release upload "${VERSION}" "${ARCHIVE}" "${ARCHIVE_SUM}"
 
       # Windows specific steps
       - name: Create Windows Installer
@@ -180,24 +180,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release upload v"${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
+          gh release upload "${VERSION}" "target\${{ env.ARCHIVE_PREFIX }}-installer.exe"
 
   post-release:
     name: Post Release
     runs-on: ubuntu-latest
     needs: [pre-release, build]
     env:
-      VERSION: ${{ needs.pre-release.outputs.version }}
+      VERSION: v${{ needs.pre-release.outputs.version }}
     steps:
       - name: Checkout Tag
         uses: actions/checkout@v4
         with:
-          ref: v${{ needs.pre-release.outputs.version }}
+          ref: ${{ env.VERSION }}
       - name: Finalize Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: gh release edit v"${VERSION}" --draft=false --latest
+        run: gh release edit "${VERSION}" --draft=false --latest
 
 
   update_homebrew_formula:
@@ -205,7 +205,7 @@ jobs:
     needs: [pre-release, build]
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.pre-release.outputs.version }}
+      VERSION: v${{ needs.pre-release.outputs.version }}
     steps:
       - name: Dispatch event to ${{ env.DESTINATION_HOMEBREW_TAP }}
         uses: ph-fritsche/action-dispatch@v1
@@ -219,7 +219,7 @@ jobs:
               "binary": "${{ env.BINARY_NAME }}",
               "homepage": "${{ env.BINARY_HOMEPAGE }}",
               "description": "${{ env.BINARY_DESCRIPTION }}",
-              "version": "${{ env.VERSION }}",
+              "version": "${{ needs.pre-release.outputs.version }}",
               "linux-x86_64_archive": "${{ env.DOWNLOAD_PREFIX }}/${{ needs.build.outputs.linux-x86_64_archive }}",
               "linux-x86_64_sha256": "${{ needs.build.outputs.linux-x86_64_sha256 }}",
               "macos-arm64_archive": "${{ env.DOWNLOAD_PREFIX }}/${{ needs.build.outputs.macos-arm64_archive }}",
