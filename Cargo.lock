@@ -2395,7 +2395,7 @@ checksum = "4030760ffd992bef45b0ae3f10ce1aba99e33464c90d14dd7c039884963ddc7a"
 
 [[package]]
 name = "p6m"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "anyhow",
  "async-trait",
