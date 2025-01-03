@@ -130,3 +130,4 @@ begin
     DeleteFile(ExpandConstant('{app}\PathMgr.dll'));
     RemoveDir(ExpandConstant('{app}'));
   end;
+end;
