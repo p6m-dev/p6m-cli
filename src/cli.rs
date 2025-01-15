@@ -1,6 +1,6 @@
 use crate::check::Ecosystem;
-use crate::version;
-use crate::{models::artifact, whoami};
+use crate::models::artifact;
+use crate::{version, whoami};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
@@ -184,6 +184,9 @@ pub fn command() -> Command {
             .subcommand(Command::new("azure")
                 .about("Only configure SSO for Azure")
             )
+            .subcommand(Command::new("auth0")
+                .about("Only configure SSO for Auth0")
+            )
         )
         .subcommand(Command::new("login")
             .about("Login to p6m services")
@@ -244,6 +247,7 @@ impl Environment {}
 #[derive(Debug, Clone)]
 pub struct P6mEnvironment {
     pub config_dir: Utf8PathBuf,
+    pub kube_dir: Utf8PathBuf,
 
     // Auth0
     pub domain: String,
@@ -265,6 +269,7 @@ impl P6mEnvironment {
                 println!("Using development environment");
                 Self {
                     config_dir: home_dir.join(".p6m-dev"),
+                    kube_dir: home_dir.join(".kube"),
                     domain: "p6m-dev.us.auth0.com".to_owned(),
                     client_id: "DkAzPi8iJITkDWKAoSjPON9jq6RSyCL9".to_owned(),
                     audience: "https://api-dev.p6m.dev/v1/".to_owned(),
@@ -272,6 +277,7 @@ impl P6mEnvironment {
             }
             false => Self {
                 config_dir: home_dir.join(".p6m"),
+                kube_dir: home_dir.join(".kube"),
                 domain: "auth.p6m.run".to_owned(),
                 client_id: "j4jEhWwe2od1eacxuocy0sfmbf7V4H8V".to_owned(),
                 audience: "https://api.p6m.run/v1/".to_owned(),
@@ -286,5 +292,9 @@ impl P6mEnvironment {
 
     pub fn config_dir(&self) -> &Utf8Path {
         self.config_dir.as_path()
+    }
+
+    pub fn kube_dir(&self) -> &Utf8Path {
+        self.kube_dir.as_path()
     }
 }

@@ -1,7 +1,9 @@
 extern crate clap;
 
-mod cli;
+mod auth;
+mod auth0;
 mod check;
+mod cli;
 mod completions;
 mod context;
 mod logging;
@@ -14,10 +16,11 @@ mod sso;
 mod tilt;
 mod version;
 mod whoami;
-mod auth;
 
 use cli::P6mEnvironment;
 use log::error;
+
+pub use auth0::*;
 
 #[tokio::main]
 async fn main() {
@@ -39,7 +42,7 @@ async fn main() {
         Some(("purge", subargs)) => purge::execute(subargs),
         Some(("repositories", subargs)) => repositories::execute(subargs).await,
         Some(("tilt", subargs)) => tilt::execute(subargs).await,
-        Some(("sso", subargs)) => sso::execute(subargs).await,
+        Some(("sso", subargs)) => sso::execute(environment, subargs).await,
         Some(("login", subargs)) => login::execute(environment, subargs).await,
         Some(("whoami", subargs)) => whoami::execute(environment, subargs).await,
         Some((command, _)) => Err(anyhow::Error::msg(format!("Invalid command: {command}"))),
@@ -47,6 +50,12 @@ async fn main() {
     };
 
     if let Err(e) = result {
-        error!("{}", e);
+        error!(
+            "{}",
+            e.chain()
+                .map(|e| e.to_string())
+                .collect::<Vec<String>>()
+                .join(": ")
+        );
     }
 }

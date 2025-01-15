@@ -1,19 +1,19 @@
-use crate::{cli::P6mEnvironment, models::openid::DeviceCodeRequest, whoami};
-use anyhow::{Context, Error};
+use crate::{auth::TokenRepository, cli::P6mEnvironment, whoami};
+use anyhow::Error;
 use clap::ArgMatches;
 
 pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Result<(), Error> {
-    let mut device_code_request = DeviceCodeRequest::new(&environment).await?.force_new();
+    let organization = matches
+        .try_get_one::<String>("organization-name")
+        .unwrap_or(None);
 
-    if let Some(organization) = matches.get_one::<String>("organization-name") {
-        device_code_request = device_code_request
-            .with_organization(organization)
-            .await
-            .context("You are not logged in. First run `p6m login` (without --org) to log in.")?
-            .force_new();
+    let mut token_repository = TokenRepository::new(&environment)?.force();
+
+    if let Some(organization) = organization {
+        token_repository.with_organization(organization)?;
     }
 
-    device_code_request.exchange_for_token().await?;
+    token_repository.try_login().await?;
 
     println!("\nLogged in!\n");
     whoami::execute(environment, matches).await

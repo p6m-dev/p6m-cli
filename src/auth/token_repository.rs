@@ -1,26 +1,34 @@
-use crate::models::openid::{AccessTokenResponse, OpenIdDiscoveryDocument};
-use crate::{cli::P6mEnvironment, models::openid::UserInfo};
-use anyhow::{anyhow, Context, Result};
+use crate::cli::P6mEnvironment;
+use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
 use log::debug;
-use serde::Deserialize;
+use openid::AccessTokenResponse;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs};
+
+use super::openid;
 
 /// Acts as an abstraction for reading and writing tokens from disk.
 #[derive(Debug, Clone)]
 pub struct TokenRepository {
     auth_dir: Utf8PathBuf,
+    organization_id: Option<String>,
     environment: P6mEnvironment,
+    force: bool,
+    scopes: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Claims {
     pub exp: i64,
     #[serde(rename = "https://p6m.dev/v1/orgs")]
     pub orgs: Option<BTreeMap<String, String>>,
     pub scope: Option<String>,
+    pub email: Option<String>,
+    #[serde(rename = "https://p6m.dev/v1/org")]
+    pub org: Option<String>,
 }
 
 impl TokenRepository {
@@ -30,33 +38,131 @@ impl TokenRepository {
         fs::create_dir_all(&auth_dir)?;
         Ok(TokenRepository {
             auth_dir,
+            organization_id: None,
             environment: environment.clone(),
+            force: false,
+            scopes: vec![],
         })
     }
 
-    /// Appends organization_id to the path for the stored tokens
-    pub fn with_organization_id(mut self, organization_id: &String) -> Result<Self> {
-        self.auth_dir = self.auth_dir.join(organization_id);
-        fs::create_dir_all(&self.auth_dir)?;
-        Ok(self)
+    pub fn force(mut self) -> Self {
+        self.force = true;
+        self
     }
 
-    /// Get the User Info from OpenID
-    pub async fn user_info(&self) -> Result<UserInfo> {
-        let openid_configuration =
-            OpenIdDiscoveryDocument::discover(self.environment.domain.clone()).await?;
+    pub fn with_organization(&mut self, organization: &String) -> Result<()> {
+        let token_repository = Self::new(&self.environment)?;
 
-        let token = self
-            .read_token(AuthToken::Access)?
-            .context("missing access token")?;
-
-        match UserInfo::request(openid_configuration.userinfo_endpoint, token)
-            .await
-            .context("unable to get user info")
-        {
-            Ok(user_info) => Ok(user_info),
-            Err(_) => Err(anyhow!("unable to get user info")),
+        if !token_repository.is_logged_in() {
+            return Err(anyhow::Error::msg(
+                "Please run `p6m login` before acquiring an organization token.",
+            ));
         }
+
+        let id_claims = token_repository
+            .read_claims(AuthToken::Id)?
+            .context("unable to read claims from id token")?;
+
+        let organization_id = id_claims
+            .orgs
+            .and_then(|orgs| {
+                orgs.into_iter()
+                    .find(|org| {
+                        // match on either the key (org id) or the value (org name)
+                        org.0 == organization.to_string() || org.1 == organization.to_string()
+                    })
+                    .map(|o| o.0)
+            })
+            .context("missing desired organization in access token claims")?;
+
+        self.with_organization_id(&organization_id)?;
+
+        Ok(())
+    }
+
+    pub fn with_scope(&mut self, scope: &str) {
+        self.scopes.push(scope.to_string());
+    }
+
+    pub async fn try_login(&mut self) -> Result<()> {
+        if self.force {
+            self.clear()?;
+            self.login().await?;
+        } else if self.should_refresh()? {
+            match self.refresh().await {
+                Ok(_) => return Ok(()),
+                Err(_) => self.login().await?,
+            };
+        }
+
+        let granted_scopes: Vec<String> = self
+            .read_claims(AuthToken::Access)?
+            .context("unable to read claims")?
+            .scope
+            .context("missing scope claim")?
+            .split(" ")
+            .map(|s| s.to_string())
+            .collect();
+
+        if !granted_scopes.iter().any(|s| !self.scopes.contains(s)) {
+            debug!(
+                "Missing desired scopes ({}), re-authenticating.",
+                self.scopes.join(" ")
+            );
+            self.login().await?;
+        }
+
+        Ok(())
+    }
+
+    async fn login(&mut self) -> Result<Self> {
+        let mut device_code_request = openid::DeviceCodeRequest::new(&self.environment).await?;
+
+        for scope in self.scopes.iter() {
+            device_code_request = device_code_request.with_scope(scope);
+        }
+
+        let access_token_response = device_code_request
+            .login()
+            .await
+            .context("unable to exchange device code for tokens")?;
+
+        self.write_tokens(&access_token_response)?;
+
+        Ok(self.clone())
+    }
+
+    async fn refresh(&mut self) -> Result<Self> {
+        let refresh_token = self
+            .read_token(AuthToken::Refresh)
+            .context("unable to read refresh token")?
+            .context("missing refresh token")?;
+
+        let device_code_request = openid::DeviceCodeRequest::new(&self.environment).await?;
+
+        let access_token_response = device_code_request
+            .refresh(&refresh_token)
+            .await
+            .context("unable to refresh tokens")?;
+
+        self.write_tokens(&access_token_response)?;
+
+        Ok(self.clone())
+    }
+
+    pub fn clear(&self) -> Result<()> {
+        fs::remove_dir_all(&self.auth_dir)?;
+        fs::create_dir_all(&self.auth_dir)?;
+        Ok(())
+    }
+
+    /// Appends organization_id to the path for the stored tokens
+    fn with_organization_id(&mut self, organization_id: &String) -> Result<()> {
+        self.organization_id = Some(organization_id.clone());
+        self.auth_dir = self.auth_dir.join(organization_id);
+        self.scopes.push(format!("org:{}", organization_id));
+        fs::create_dir_all(&self.auth_dir)?;
+        Ok(())
     }
 
     /// Read a token from disk.
@@ -100,6 +206,7 @@ impl TokenRepository {
         Ok(claims)
     }
 
+    #[allow(dead_code)]
     pub fn claim_keys(&self, token_type: AuthToken) -> Result<Vec<String>> {
         let claims = match self
             .read_token(token_type)
@@ -123,14 +230,44 @@ impl TokenRepository {
         Ok(claims)
     }
 
-    // Get the expiration date of the desired token
-    pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
-        let claims = self.read_claims(token_type)?.unwrap_or_default();
+    pub fn is_logged_in(&self) -> bool {
+        let id_token = self.read_token(AuthToken::Id).unwrap_or(None);
+        let access_token = self.read_token(AuthToken::Access).unwrap_or(None);
+        let refresh_token = self.read_token(AuthToken::Refresh).unwrap_or(None);
 
-        Ok(DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?)
+        if id_token.is_none() || access_token.is_none() {
+            return false;
+        }
+
+        return refresh_token.is_some();
     }
 
-    pub fn has_claims(self, token_type: AuthToken, desired_claims: &Vec<String>) -> Result<bool> {
+    pub fn should_refresh(&self) -> Result<bool> {
+        let id_exp = self.clone().read_expiration(AuthToken::Id)?;
+        let access_exp = self.clone().read_expiration(AuthToken::Access)?;
+
+        let should_refresh = id_exp < Utc::now() - Duration::hours(1)
+            || access_exp < Utc::now() - Duration::hours(1);
+
+        debug!("Needs refresh: {should_refresh}");
+
+        Ok(should_refresh)
+    }
+
+    // Get the expiration date of the desired token
+    pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
+        let claims = self.read_claims(token_type.clone())?.unwrap_or_default();
+
+        let exp = DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?;
+        debug!("{token_type} expiration: {exp}");
+
+        debug!("Expired? {}", exp < Utc::now() - Duration::hours(1));
+
+        Ok(exp)
+    }
+
+    #[allow(dead_code)]
+    pub fn has_claims(&self, token_type: AuthToken, desired_claims: &Vec<String>) -> Result<bool> {
         let actual_claims = self.claim_keys(token_type)?;
 
         debug!("Actual claims: {:?}", actual_claims);
@@ -158,16 +295,6 @@ impl TokenRepository {
         Ok(())
     }
 
-    pub fn current(&self) -> Result<AccessTokenResponse> {
-        Ok(AccessTokenResponse {
-            access_token: self.read_token(AuthToken::Access)?,
-            refresh_token: self.read_token(AuthToken::Refresh)?,
-            id_token: self.read_token(AuthToken::Id)?,
-            error: None,
-            error_description: None,
-        })
-    }
-
     /// The root directory where auth-related files are stored.
     pub fn auth_root(&self) -> &Utf8Path {
         self.auth_dir.as_path()
@@ -179,10 +306,37 @@ impl TokenRepository {
     fn token_path(&self, token_type: AuthToken) -> Utf8PathBuf {
         self.auth_root().join(token_type.to_string())
     }
+
+    pub fn to_string(&self) -> String {
+        if let Some(claims) = self.read_claims(AuthToken::Id).unwrap_or(None) {
+            let detail: Vec<String> = match (claims.email.as_ref(), claims.org.as_ref()) {
+                (Some(email), Some(org)) => {
+                    vec![
+                        format!("Organization: {}", org),
+                        format!("Email: {}", email),
+                    ]
+                }
+                (Some(email), None) => vec![format!("Email: {}", email)],
+                _ => vec![],
+            };
+
+            return detail.join("\n");
+        };
+
+        "Not logged in".into()
+    }
+
+    pub fn to_json(&self) -> Result<String, anyhow::Error> {
+        let claims = self
+            .read_claims(AuthToken::Id)
+            .context("unable to get claims")?
+            .context("not logged in")?;
+        Ok(serde_json::to_string_pretty(&claims)?)
+    }
 }
 
 /// Enumeration of Auth Token Types
-#[derive(Debug, strum_macros::Display)]
+#[derive(Debug, strum_macros::Display, Clone)]
 pub enum AuthToken {
     #[strum(to_string = "ACCESS_TOKEN")]
     Access,

@@ -1,15 +1,10 @@
-use anyhow::{anyhow, Context};
-use chrono::{Duration, Utc};
 use itertools::Itertools;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use std::time;
 use tokio::time::sleep;
 
-use crate::{
-    auth::{AuthToken, TokenRepository},
-    cli::P6mEnvironment,
-};
+use crate::cli::P6mEnvironment;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenIdDiscoveryDocument {
@@ -35,10 +30,6 @@ pub struct DeviceCodeRequest {
     pub client_id: String,
     pub scope: String,
     pub audience: String,
-    interactive: bool,
-    force: bool,
-    environment: P6mEnvironment,
-    token_repository: TokenRepository,
     openid_configuration: OpenIdDiscoveryDocument,
     organization_id: Option<String>,
     desired_claims: Vec<String>,
@@ -48,7 +39,6 @@ impl DeviceCodeRequest {
     pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
 
     pub async fn new(environment: &P6mEnvironment) -> Result<Self, anyhow::Error> {
-        let token_repository = TokenRepository::new(&environment)?;
         let openid_configuration =
             OpenIdDiscoveryDocument::discover(environment.domain.clone()).await?;
 
@@ -57,17 +47,13 @@ impl DeviceCodeRequest {
             // note: openid, email, offline_access are implicity requested
             scope: DeviceCodeRequest::DEFAULT_SCOPES.into(),
             audience: environment.audience.clone(),
-            interactive: true,
-            force: false,
-            environment: environment.clone(),
-            token_repository,
             openid_configuration,
             organization_id: None,
             desired_claims: vec![],
         })
     }
 
-    pub fn with_scope(mut self, scope: &str) -> Self {
+    pub fn with_scope(&mut self, scope: &str) -> Self {
         let mut scopes: Vec<&str> = self.scope.split(" ").into_iter().collect::<Vec<_>>();
         scopes.push(scope);
         scopes.sort();
@@ -82,106 +68,32 @@ impl DeviceCodeRequest {
 
         debug!("Setting scopes: {:?}", scopes);
         self.scope = scopes.join(" ");
-        self
+        self.clone()
     }
 
-    pub async fn with_organization(mut self, organization: &String) -> Result<Self, anyhow::Error> {
-        let token_repository = TokenRepository::new(&self.environment)?;
+    pub async fn login(&self) -> Result<AccessTokenResponse, anyhow::Error> {
+        let device_code_response = self
+            .send(
+                self.openid_configuration
+                    .device_authorization_endpoint
+                    .clone(),
+            )
+            .await?;
 
-        let id_claims = token_repository
-            .read_claims(AuthToken::Id)?
-            .context("unable to read claims from id token")?;
+        let tokens = device_code_response
+            .exchange_for_token(
+                self.openid_configuration.token_endpoint.clone(),
+                self.client_id.clone(),
+            )
+            .await?;
 
-        let organization_id = id_claims
-            .orgs
-            .and_then(|orgs| {
-                orgs.into_iter()
-                    .find(|org| {
-                        // match on either the key (org id) or the value (org name)
-                        org.0 == organization.to_string() || org.1 == organization.to_string()
-                    })
-                    .map(|o| o.0)
-            })
-            .context("missing desired organization in access token claims")?;
-
-        self.token_repository = token_repository.with_organization_id(&organization_id)?;
-
-        // Copy existing scopes, if any (so not to loose previously granted scopes)
-        self.scope = self
-            .token_repository
-            .read_claims(AuthToken::Access)
-            .unwrap_or_default()
-            .and_then(|claims| claims.scope)
-            .unwrap_or(Self::DEFAULT_SCOPES.to_string());
-
-        self = self.with_scope(&format!("org:{}", organization_id));
-        self.organization_id = Some(organization_id.clone());
-
-        Ok(self)
+        Ok(tokens)
     }
 
-    pub fn interactive(mut self, interactive: bool) -> Self {
-        self.interactive = interactive;
-        self
-    }
-
-    pub fn force_new(mut self) -> Self {
-        self.force = true;
-        self
-    }
-
-    pub async fn exchange_for_token(&self) -> Result<TokenRepository, anyhow::Error> {
-        let tokens = match (
-            self.token_repository
-                .clone()
-                .has_claims(AuthToken::Access, &self.desired_claims)?,
-            self.token_repository
-                .clone()
-                .read_token(AuthToken::Refresh)?,
-            (self
-                .token_repository
-                .clone()
-                .read_expiration(AuthToken::Access)?
-                - Utc::now()
-                <= Duration::hours(1)),
-            self.force,
-        ) {
-            (_, None, _, false) => {
-                return Err(anyhow!("Not logged in (force: false)"));
-            }
-            (false, _, _, _) | (_, None, _, _) | (_, _, _, true) => {
-                if !self.interactive {
-                    return Err(anyhow!(
-                        "Not logged in (force: {}, interactive: false)",
-                        self.force
-                    ));
-                }
-                let device_code_response = self
-                    .send(
-                        self.openid_configuration
-                            .device_authorization_endpoint
-                            .clone(),
-                    )
-                    .await?;
-
-                let tokens = device_code_response
-                    .exchange_for_token(
-                        self.openid_configuration.token_endpoint.clone(),
-                        self.client_id.clone(),
-                    )
-                    .await?;
-
-                tokens
-            }
-            (_, Some(refresh_token), true, _) => self.refresh(&refresh_token).await?,
-            _ => self.token_repository.current()?,
-        };
-
-        self.token_repository.write_tokens(&tokens)?;
-        Ok(self.token_repository.clone())
-    }
-
-    async fn refresh(&self, refresh_token: &String) -> Result<AccessTokenResponse, anyhow::Error> {
+    pub async fn refresh(
+        &self,
+        refresh_token: &String,
+    ) -> Result<AccessTokenResponse, anyhow::Error> {
         let mut form: Vec<(&str, String)> = vec![
             ("grant_type", "refresh_token".into()),
             ("client_id", self.client_id.to_string()),
@@ -369,46 +281,12 @@ pub struct UserInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "https://p6m.dev/v1/email")]
+    pub p6m_email: Option<String>,
+
     // Only available if the "https://p6m.dev/v1/org" claim is on the token
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "https://p6m.dev/v1/org")]
     pub org: Option<String>,
-}
-
-impl UserInfo {
-    pub async fn request(
-        userinfo_endpoint: String,
-        access_token: String,
-    ) -> Result<Self, anyhow::Error> {
-        debug!("Requesting user info from {}", userinfo_endpoint);
-        let raw_response = reqwest::Client::new()
-            .get(userinfo_endpoint)
-            .bearer_auth(access_token)
-            .header("Content-Type", "application/json")
-            .send()
-            .await?
-            .text()
-            .await?;
-        debug!("User info response: {}", raw_response);
-        Ok(serde_json::from_str(&raw_response)?)
-    }
-
-    pub fn to_string(&self) -> String {
-        let detail: Vec<String> = match (self.email.as_ref(), self.org.as_ref()) {
-            (Some(email), Some(org)) => {
-                vec![
-                    format!("Organization: {}", org),
-                    format!("Email: {}", email),
-                ]
-            }
-            (Some(email), None) => vec![format!("Email: {}", email)],
-            _ => vec![],
-        };
-
-        detail.join("\n")
-    }
-
-    pub fn to_json(&self) -> Result<String, anyhow::Error> {
-        Ok(serde_json::to_string_pretty(self)?)
-    }
 }
