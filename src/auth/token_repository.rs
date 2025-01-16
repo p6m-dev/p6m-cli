@@ -22,7 +22,7 @@ pub struct TokenRepository {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Claims {
-    pub exp: i64,
+    pub exp: Option<i64>,
     #[serde(rename = "https://p6m.dev/v1/orgs")]
     pub orgs: Option<BTreeMap<String, String>>,
     pub scope: Option<String>,
@@ -106,8 +106,9 @@ impl TokenRepository {
 
         if !granted_scopes.iter().any(|s| !self.scopes.contains(s)) {
             debug!(
-                "Missing desired scopes ({}), re-authenticating.",
-                self.scopes.join(" ")
+                "Desired scopes missing, re-authenticating. (granted: {}, desired: {})",
+                granted_scopes.join(" "),
+                self.scopes.join(" "),
             );
             self.login().await?;
         }
@@ -246,22 +247,23 @@ impl TokenRepository {
         let id_exp = self.clone().read_expiration(AuthToken::Id)?;
         let access_exp = self.clone().read_expiration(AuthToken::Access)?;
 
-        let should_refresh = id_exp < Utc::now() - Duration::hours(1)
-            || access_exp < Utc::now() - Duration::hours(1);
+        let access_token_will_exp = access_exp < Utc::now() - Duration::hours(1);
+        let id_token_will_exp = id_exp < Utc::now() - Duration::hours(1);
 
-        debug!("Needs refresh: {should_refresh}");
+        debug!("Access token expiring? {access_token_will_exp}");
+        debug!("Id token expiring? {id_token_will_exp}");
 
-        Ok(should_refresh)
+        Ok(access_token_will_exp || id_token_will_exp)
     }
 
     // Get the expiration date of the desired token
     pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
         let claims = self.read_claims(token_type.clone())?.unwrap_or_default();
 
-        let exp = DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?;
-        debug!("{token_type} expiration: {exp}");
+        let exp = DateTime::from_timestamp(claims.exp.unwrap_or(Utc::now().timestamp()), 0)
+            .context("unable to parse exp claim")?;
 
-        debug!("Expired? {}", exp < Utc::now() - Duration::hours(1));
+        debug!("{token_type} expiration: {exp}");
 
         Ok(exp)
     }

@@ -33,7 +33,7 @@ pub async fn configure_auth0(
     let email = token_repository
         .read_claims(AuthToken::Id)
         .context("unable to read claims")?
-        .context("missing claims")?
+        .context("missing claims on the ID Token")?
         .email
         .context("missing email")?;
 
