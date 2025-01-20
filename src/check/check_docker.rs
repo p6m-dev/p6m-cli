@@ -8,5 +8,5 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_docker(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Docker", Command::new("docker").arg("--version"), "docker/")
+    perform_check("Docker", Command::new("docker").arg("--version"), "core/docker/")
 }

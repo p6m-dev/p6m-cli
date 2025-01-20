@@ -10,7 +10,7 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_archetect_binary(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Archetect", Command::new("archetect").arg("--version"), "archetect/#installation")
+    perform_check("Archetect", Command::new("archetect").arg("--version"), "core/archetect/#installation")
 }
 
 fn check_archetect_config(_args: &ArgMatches) -> anyhow::Result<()> {
@@ -19,7 +19,7 @@ fn check_archetect_config(_args: &ArgMatches) -> anyhow::Result<()> {
         .join(".archetect/etc/archetect.yaml")
         .exists() {
         println!("\t{CHECK_ERROR} Archetect is not configured correctly for your environment.");
-        print_see_also("archetect/#configuration");
+        print_see_also("core/archetect/#configuration");
     } else {
         println!("\t{CHECK_SUCCESS} Archetect Configured");
     }

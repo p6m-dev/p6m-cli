@@ -8,7 +8,7 @@ pub const CHECK_PREFIX: &str = "🔍";
 pub const CHECK_SUCCESS: &str = "🟢";
 pub const CHECK_ERROR: &str = "🔴";
 // pub const CHECK_WARN: &str = "🟡";
-pub const DOCS_PREFIX: &str = "https://docs.p6m.dev/workstation";
+pub const DOCS_PREFIX: &str = "https://developer.p6m.dev/docs/workstation";
 
 pub fn print_see_also(path: &str) {
     println!("\n\t   See: {DOCS_PREFIX}/{path}");

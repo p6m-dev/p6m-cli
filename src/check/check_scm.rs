@@ -10,7 +10,7 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 pub fn check_git_installed(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Git", Command::new("git").arg("--version"), "scm/#git")
+    perform_check("Git", Command::new("git").arg("--version"), "core/scm/#git")
 }
 
 pub fn check_git_author(_args: &ArgMatches) -> anyhow::Result<()> {

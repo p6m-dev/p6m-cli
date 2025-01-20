@@ -25,5 +25,5 @@ fn check_artifact_management_tokens(_args: &ArgMatches) -> anyhow::Result<()> {
 
 fn print_missing_token_error() {
     println!("\t{CHECK_ERROR} {ARTIFACTORY_USER_KEY} and/or {ARTIFACTORY_TOKEN_KEY} environment variables have not been set correctly.");
-    print_see_also("artifacts");
+    print_see_also("core/artifacts");
 }
