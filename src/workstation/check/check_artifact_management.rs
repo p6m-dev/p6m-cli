@@ -1,5 +1,5 @@
 use clap::ArgMatches;
-use crate::check::common::*;
+use crate::workstation::check::common::*;
 
 const ARTIFACTORY_TOKEN_KEY: &str = "ARTIFACTORY_IDENTITY_TOKEN";
 const ARTIFACTORY_USER_KEY: &str = "ARTIFACTORY_USERNAME";

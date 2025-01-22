@@ -1,7 +1,7 @@
 use std::process::Command;
 use clap::ArgMatches;
 use dirs::home_dir;
-use crate::check::common::*;
+use crate::workstation::check::common::*;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_java(args)?;

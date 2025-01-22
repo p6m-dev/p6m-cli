@@ -1,4 +1,4 @@
-use clap::ArgMatches;
+use clap::{ArgMatches, ValueEnum};
 use strum::IntoEnumIterator;
 
 mod check_archetect;
@@ -26,6 +26,26 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn execute_interactive(args: &ArgMatches) -> anyhow::Result<()> {
+    let ecosystems = Ecosystem::value_variants().iter().map(|ecosystem| ecosystem.to_string())
+        .collect::<Vec<String>>();
+    let prompt = inquire::MultiSelect::new("Ecosystems:", ecosystems);
+    match prompt.prompt_skippable() {
+        Ok(Some(ecosystems)) => {
+            let ecosystems = ecosystems.iter().map(|ecosystem| Ecosystem::from_str(ecosystem, true).expect("Cannot fail"))
+                .collect::<Vec<Ecosystem>>();
+            for ecosystem in ecosystems {
+                check_ecosystem(&ecosystem, args)?
+            }
+        }
+        Err(_) => {}
+        Ok(None) => {}
+    }
+
+    Ok(())
+
 }
 
 fn check_ecosystem(ecosystem: &Ecosystem, args: &ArgMatches) -> anyhow::Result<()> {

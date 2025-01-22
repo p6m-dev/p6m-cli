@@ -2,7 +2,6 @@ extern crate clap;
 
 mod auth;
 mod auth0;
-mod check;
 mod cli;
 mod completions;
 mod context;
@@ -16,6 +15,7 @@ mod sso;
 mod tilt;
 mod version;
 mod whoami;
+mod workstation;
 
 use cli::P6mEnvironment;
 use log::error;
@@ -36,7 +36,6 @@ async fn main() {
 
     let result = match matches.subcommand() {
         Some(("completions", subargs)) => completions::execute(subargs),
-        Some(("check", subargs)) => check::execute(subargs),
         Some(("context", subargs)) => context::execute(subargs).await,
         Some(("open", subargs)) => open::execute(subargs).await,
         Some(("purge", subargs)) => purge::execute(subargs),
@@ -45,6 +44,7 @@ async fn main() {
         Some(("sso", subargs)) => sso::execute(environment, subargs).await,
         Some(("login", subargs)) => login::execute(environment, subargs).await,
         Some(("whoami", subargs)) => whoami::execute(environment, subargs).await,
+        Some(("workstation", subargs)) => workstation::execute(subargs),
         Some((command, _)) => Err(anyhow::Error::msg(format!("Invalid command: {command}"))),
         None => Err(anyhow::Error::msg("No command given")),
     };

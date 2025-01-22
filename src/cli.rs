@@ -1,4 +1,4 @@
-use crate::check::Ecosystem;
+use crate::workstation::check::Ecosystem;
 use crate::models::artifact;
 use crate::{version, whoami};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -21,15 +21,24 @@ pub fn command() -> Command {
                         .value_parser(value_parser!(Shell)),
                 )
         )
-        .subcommand(Command::new("check")
-            .about("Check Development Environment")
-            .arg(
-                Arg::new("ecosystem")
-                    .value_parser(value_parser!(Ecosystem))
-                    .required(false)
-                    .action(clap::ArgAction::Append)
-                    .help("Ecosystem to check")
-            )
+        .subcommand(
+            Command::new("workstation")
+                .about("Workstation Checks and Setup")
+                .alias("ws")
+                .subcommand(Command::new("check")
+                    .about("Workstation Checks")
+                    .arg(
+                        Arg::new("ecosystem")
+                            .value_parser(value_parser!(Ecosystem))
+                            .required(false)
+                            .action(clap::ArgAction::Append)
+                            .help("Ecosystem to check")
+                    )
+                )
+                .subcommand(
+                    Command::new("setup")
+                        .about("Workstation Setups")
+                )
         )
         .subcommand(Command::new("context")
             .about("Switch Organization Contexts")

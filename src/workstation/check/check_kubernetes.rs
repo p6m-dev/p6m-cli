@@ -1,4 +1,4 @@
-use crate::check::common::*;
+use crate::workstation::check::common::*;
 use clap::ArgMatches;
 use std::process::Command;
 

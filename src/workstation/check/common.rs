@@ -2,7 +2,7 @@ use clap::builder::PossibleValue;
 use clap::ValueEnum;
 use std::io::{BufRead, Lines};
 use std::process::Command;
-use strum_macros::EnumIter;
+use strum_macros::{Display, EnumIter};
 
 pub const CHECK_PREFIX: &str = "🔍";
 pub const CHECK_SUCCESS: &str = "🟢";
@@ -52,7 +52,7 @@ pub fn perform_check(
     Ok(())
 }
 
-#[derive(Clone, Copy, EnumIter)]
+#[derive(Clone, Copy, EnumIter, Display)]
 pub enum Ecosystem {
     Core,
     DotNet,
