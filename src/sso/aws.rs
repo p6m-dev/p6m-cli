@@ -5,7 +5,6 @@ use crate::{
 use anyhow::Error;
 use aws_sdk_eks::config::Region;
 use chrono::{Duration, Utc};
-use futures_util::StreamExt;
 use kube::config::KubeConfigOptions;
 use log::{info, warn};
 use minijinja::render;
