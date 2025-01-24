@@ -6,8 +6,8 @@ pub mod setup;
 pub async fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     match args.subcommand() {
         None => {
-            let result = inquire::Select::new("Workstation Command:", vec!["Check", "Setup"])
-                .prompt();
+            let result =
+                inquire::Select::new("Workstation Command:", vec!["Check", "Setup"]).prompt();
             match result {
                 Ok("Check") => {
                     return check::execute_interactive(args).await;
@@ -34,3 +34,4 @@ pub async fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 
     Ok(())
 }
+

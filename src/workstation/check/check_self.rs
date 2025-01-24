@@ -1,12 +1,18 @@
-use clap::ArgMatches;
-use log::error;
 use crate::version::current_version;
 use crate::workstation::check::common::*;
+use clap::ArgMatches;
+use log::error;
+use octocrab::Octocrab;
 
 pub async fn execute(_args: &ArgMatches) -> anyhow::Result<()> {
     println!("\n{CHECK_PREFIX} Checking p6m CLI Version");
-    let octocrab = crate::repositories::create_octocrab()?;
-    match octocrab.repos("p6m-dev", "p6m-cli").releases().get_latest().await {
+    let octocrab = Octocrab::builder().build()?;
+    match octocrab
+        .repos("p6m-dev", "p6m-cli")
+        .releases()
+        .get_latest()
+        .await
+    {
         Ok(release) => {
             let latest_version = release.tag_name;
             let current_version = format!("v{}", current_version().version());
