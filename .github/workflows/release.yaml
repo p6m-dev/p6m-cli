@@ -35,6 +35,8 @@ jobs:
     outputs:
       version: ${{ steps.capture.outputs.version }}
     steps:
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
       - name: Install cargo-workspaces
         uses: baptiste0928/cargo-install@v3
         with:
@@ -42,6 +44,7 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Bump Version
         if: github.ref == 'refs/heads/main'
