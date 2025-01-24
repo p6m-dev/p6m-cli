@@ -9,6 +9,12 @@ pub(crate) struct VersionData {
     is_dirty: bool,
 }
 
+impl VersionData {
+    pub fn version(&self) -> &str {
+        self.version.as_str()
+    }
+}
+
 impl From<VersionData> for clap::builder::Str {
     fn from(version_data: VersionData) -> Self {
         let json_version_data_res = serde_json::to_string(&version_data);

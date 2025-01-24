@@ -3,14 +3,14 @@ use clap::ArgMatches;
 pub mod check;
 pub mod setup;
 
-pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
+pub async fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     match args.subcommand() {
         None => {
             let result = inquire::Select::new("Workstation Command:", vec!["Check", "Setup"])
                 .prompt();
             match result {
                 Ok("Check") => {
-                    return check::execute_interactive(args);
+                    return check::execute_interactive(args).await;
                 }
                 Ok("Setup") => {
                     return setup::execute(args);
@@ -22,7 +22,7 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
             }
         }
         Some(("check", sub_args)) => {
-            return check::execute(sub_args);
+            return check::execute(sub_args).await;
         }
         Some(("setup", sub_args)) => {
             return setup::execute(sub_args);

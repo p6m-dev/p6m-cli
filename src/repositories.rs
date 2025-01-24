@@ -350,7 +350,7 @@ fn allow_deletes(org_path: &GithubLevel) -> bool {
     }
 }
 
-fn create_octocrab() -> Result<Octocrab, Error> {
+pub(crate) fn create_octocrab() -> Result<Octocrab, Error> {
     let token = std::env::var("GITHUB_TOKEN")
         .expect("GITHUB_TOKEN env variable must be set with a classic personal token");
 

@@ -7,7 +7,7 @@ use strum_macros::{Display, EnumIter};
 pub const CHECK_PREFIX: &str = "🔍";
 pub const CHECK_SUCCESS: &str = "🟢";
 pub const CHECK_ERROR: &str = "🔴";
-// pub const CHECK_WARN: &str = "🟡";
+pub const CHECK_WARN: &str = "🟡";
 pub const DOCS_PREFIX: &str = "https://developer.p6m.dev/docs/workstation";
 
 pub fn print_see_also(path: &str) {
@@ -54,6 +54,8 @@ pub fn perform_check(
 
 #[derive(Clone, Copy, EnumIter, Display)]
 pub enum Ecosystem {
+    #[strum(serialize = "Self")]
+    P6mCli,
     Core,
     DotNet,
     Java,
@@ -65,6 +67,7 @@ pub enum Ecosystem {
 impl ValueEnum for Ecosystem {
     fn value_variants<'a>() -> &'a [Self] {
         &[
+            Ecosystem::P6mCli,
             Ecosystem::Core,
             Ecosystem::DotNet,
             Ecosystem::JavaScript,
@@ -76,6 +79,7 @@ impl ValueEnum for Ecosystem {
 
     fn to_possible_value<'a>(&self) -> Option<PossibleValue> {
         Some(match self {
+            Ecosystem::P6mCli => PossibleValue::new("self"),
             Ecosystem::Core => PossibleValue::new("core"),
             Ecosystem::DotNet => PossibleValue::new("dotnet"),
             Ecosystem::JavaScript => PossibleValue::new("javascript"),

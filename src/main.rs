@@ -44,7 +44,7 @@ async fn main() {
         Some(("sso", subargs)) => sso::execute(environment, subargs).await,
         Some(("login", subargs)) => login::execute(environment, subargs).await,
         Some(("whoami", subargs)) => whoami::execute(environment, subargs).await,
-        Some(("workstation", subargs)) => workstation::execute(subargs),
+        Some(("workstation", subargs)) => workstation::execute(subargs).await,
         Some((command, _)) => Err(anyhow::Error::msg(format!("Invalid command: {command}"))),
         None => Err(anyhow::Error::msg("No command given")),
     };
