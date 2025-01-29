@@ -1,7 +1,8 @@
-use crate::auth::{AuthToken, TokenRepository};
+use crate::auth::{AuthToken, Claims, TokenRepository};
 use crate::cli::P6mEnvironment;
 use anyhow::{Context, Error};
 use clap::ArgMatches;
+use log::debug;
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 pub enum Output {
@@ -24,11 +25,36 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
     let mut token_repository = TokenRepository::new(&environment)?;
 
     if let Some(organization) = organization {
-        token_repository.with_organization(organization)?;
-        token_repository.with_scope("login:kubernetes");
+        if output == Some(&Output::K8sAuth) {
+            token_repository.with_scope(
+                "login:kubernetes",
+                Claims {
+                    login_kubernetes: Some("true".into()),
+                    ..Default::default()
+                },
+            );
+        }
+        token_repository
+            .with_organization(organization)
+            .context("Unknown organizatization")?;
     }
 
-    token_repository.try_login().await?;
+    token_repository = match token_repository
+        .try_refresh()
+        .await
+        .map_err(|e| {
+            debug!("Unable to refresh: {}", e);
+            e
+        })
+        .ok()
+    {
+        Some(token_repository) => token_repository,
+        None => {
+            // TODO
+            debug!("Unable to refresh, trying to login");
+            token_repository.force().try_login().await?
+        }
+    };
 
     println!(
         "{}",

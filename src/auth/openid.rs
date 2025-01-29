@@ -1,10 +1,9 @@
-use itertools::Itertools;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use std::time;
 use tokio::time::sleep;
 
-use crate::cli::P6mEnvironment;
+use super::TokenRepository;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenIdDiscoveryDocument {
@@ -27,48 +26,19 @@ impl OpenIdDiscoveryDocument {
 
 #[derive(Debug, Clone)]
 pub struct DeviceCodeRequest {
-    pub client_id: String,
-    pub scope: String,
-    pub audience: String,
+    token_repository: TokenRepository,
     openid_configuration: OpenIdDiscoveryDocument,
-    organization_id: Option<String>,
-    desired_claims: Vec<String>,
 }
 
 impl DeviceCodeRequest {
-    pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
-
-    pub async fn new(environment: &P6mEnvironment) -> Result<Self, anyhow::Error> {
+    pub async fn new(token_repository: &TokenRepository) -> Result<Self, anyhow::Error> {
         let openid_configuration =
-            OpenIdDiscoveryDocument::discover(environment.domain.clone()).await?;
+            OpenIdDiscoveryDocument::discover(token_repository.environment.domain.clone()).await?;
 
         Ok(Self {
-            client_id: environment.client_id.clone(),
-            // note: openid, email, offline_access are implicity requested
-            scope: DeviceCodeRequest::DEFAULT_SCOPES.into(),
-            audience: environment.audience.clone(),
+            token_repository: token_repository.clone(),
             openid_configuration,
-            organization_id: None,
-            desired_claims: vec![],
         })
-    }
-
-    pub fn with_scope(&mut self, scope: &str) -> Self {
-        let mut scopes: Vec<&str> = self.scope.split(" ").into_iter().collect::<Vec<_>>();
-        scopes.push(scope);
-        scopes.sort();
-        scopes.dedup();
-
-        if scope.starts_with("login:") {
-            let claim = scope.split(":").join("/");
-            let desired_claim = format!("https://p6m.dev/v1/permission/{}", claim);
-            debug!("Adding desired claim: {}", desired_claim);
-            self.desired_claims.push(desired_claim);
-        }
-
-        debug!("Setting scopes: {:?}", scopes);
-        self.scope = scopes.join(" ");
-        self.clone()
     }
 
     pub async fn login(&self) -> Result<AccessTokenResponse, anyhow::Error> {
@@ -78,34 +48,40 @@ impl DeviceCodeRequest {
                     .device_authorization_endpoint
                     .clone(),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                debug!("Failed to send device code request: {}", e);
+                e
+            })?;
 
         let tokens = device_code_response
             .exchange_for_token(
                 self.openid_configuration.token_endpoint.clone(),
-                self.client_id.clone(),
+                self.token_repository.environment.client_id.clone(),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                debug!("Failed to exchange device code for token: {}", e);
+                e
+            })?;
 
         Ok(tokens)
     }
 
     pub async fn refresh(
-        &self,
+        &mut self,
         refresh_token: &String,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
         let mut form: Vec<(&str, String)> = vec![
             ("grant_type", "refresh_token".into()),
-            ("client_id", self.client_id.to_string()),
+            (
+                "client_id",
+                self.token_repository.environment.client_id.to_string(),
+            ),
             ("refresh_token", refresh_token.to_string()),
         ];
 
-        if let Some(organization_id) = self.organization_id.clone() {
-            form.push((
-                "acr_values".into(),
-                format!("urn:auth:acr:organization-id:{}", organization_id),
-            ));
-        }
+        form.extend(self.token_repository.form_data().await?);
 
         let raw_response = reqwest::Client::new()
             .post(self.openid_configuration.token_endpoint.clone())
@@ -113,13 +89,24 @@ impl DeviceCodeRequest {
             .send()
             .await?
             .text()
-            .await?;
+            .await
+            .map_err(|e| {
+                debug!("Failed to send refresh token request: {}", e);
+                e
+            })?;
 
         trace!("Refresh token response: {}", raw_response);
-        let response: AccessTokenResponse = serde_json::from_str(raw_response.as_str())?;
+        let response: AccessTokenResponse =
+            serde_json::from_str(raw_response.as_str()).map_err(|e| {
+                debug!("Failed to parse refresh token response: {}", e);
+                e
+            })?;
 
         if response.error.is_some() {
-            return Err(response.as_error());
+            return Err(response.as_error()).map_err(|e| {
+                debug!("Failed to refresh token: {}", e);
+                e
+            });
         }
 
         Ok(response)
@@ -129,17 +116,24 @@ impl DeviceCodeRequest {
         &self,
         device_authorization_endpoint: String,
     ) -> Result<DeviceCodeResponse, anyhow::Error> {
+        let scope = self.token_repository.clone().scope_str().await?;
         debug!(
             "Sending device code request to {} with scopes {}",
-            device_authorization_endpoint, self.scope,
+            device_authorization_endpoint, scope,
         );
         let client = reqwest::Client::new();
         let raw_response = client
             .post(device_authorization_endpoint)
             .form(&[
-                ("client_id", self.client_id.clone()),
-                ("scope", self.scope.clone()),
-                ("audience", self.audience.clone()),
+                (
+                    "client_id",
+                    self.token_repository.environment.client_id.clone(),
+                ),
+                ("scope", scope),
+                (
+                    "audience",
+                    self.token_repository.environment.audience.clone(),
+                ),
             ])
             .send()
             .await?
