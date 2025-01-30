@@ -49,7 +49,9 @@ impl App {
             .get("ClaimName")
             .map(|s| s.to_string())
             .unwrap_or(self.readable_name())
-            .replace(" ", "-")
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect()
     }
 
     pub fn url(&self) -> String {
