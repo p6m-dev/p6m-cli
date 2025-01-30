@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: smoke
+  group: smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
