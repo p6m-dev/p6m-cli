@@ -51,7 +51,7 @@ pub async fn configure_auth0(
     let kube_apps = apps.contain_scope("login:kubernetes");
 
     for app in kube_apps.clone() {
-        let name = app.machine_name();
+        let name = app.machine_name().replace("-auth0", "");
         let url = app.url();
         let org = match app.org() {
             Some(org) => org,
