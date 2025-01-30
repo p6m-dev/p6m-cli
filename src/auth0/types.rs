@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
@@ -34,11 +36,22 @@ pub struct App {
     pub url: String,
     pub origins: Vec<String>,
     pub scopes: Vec<String>,
+    pub metadata: BTreeMap<String, String>,
 }
 
 impl App {
-    pub fn name(&self) -> String {
+    pub fn display_name(&self) -> String {
         self.name.clone()
+    }
+
+    pub fn machine_name(&self) -> String {
+        self.metadata
+            .get("ClaimName")
+            .map(|s| s.to_string())
+            .unwrap_or(self.display_name())
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect()
     }
 
     pub fn url(&self) -> String {
