@@ -204,7 +204,14 @@ pub fn command() -> Command {
                     .long("org")
                     .required(false)
                     .action(clap::ArgAction::Set)
-                    .help("The JV Organization Name")
+                    .help("The JV Organization Name"),
+            )
+            .arg(
+                Arg::new("refresh")
+                    .long("refresh")
+                    .short('r')
+                    .action(clap::ArgAction::SetTrue)
+                    .help("Refresh access tokens")
             )
         )
         .subcommand(Command::new("whoami")

@@ -1,48 +1,170 @@
 use crate::cli::P6mEnvironment;
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
-use log::debug;
+use log::{debug, trace};
 use openid::AccessTokenResponse;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display, Formatter},
+    fs,
+};
 
 use super::openid;
 
 /// Acts as an abstraction for reading and writing tokens from disk.
 #[derive(Debug, Clone)]
 pub struct TokenRepository {
+    pub environment: P6mEnvironment,
     auth_dir: Utf8PathBuf,
     organization_id: Option<String>,
-    environment: P6mEnvironment,
     force: bool,
     scopes: Vec<String>,
+    desired_claims: Claims,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Claims {
-    pub exp: i64,
-    #[serde(rename = "https://p6m.dev/v1/orgs")]
-    pub orgs: Option<BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
-    #[serde(rename = "https://p6m.dev/v1/org")]
+
+    // Assertable/mergable claims
+    #[serde(
+        rename = "https://p6m.dev/v1/permission/login/kubernetes",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub login_kubernetes: Option<String>,
+    #[serde(
+        rename = "https://p6m.dev/v1/orgs",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub orgs: Option<BTreeMap<String, String>>,
+    #[serde(
+        rename = "https://p6m.dev/v1/org",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub org: Option<String>,
+
+    #[serde(
+        rename = "https://p6m.dev/v1/permission",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub permissions: Option<Vec<String>>,
+}
+
+impl Display for Claims {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            serde_json::to_string(&self.clone())
+                .context("unable to dsplay claims")
+                .unwrap()
+        )
+    }
+}
+
+impl Claims {
+    pub fn assert(&self, desired_claims: &Claims) -> Result<()> {
+        debug!("asserting claims: {}", self);
+        debug!("desired_claims: {}", desired_claims);
+
+        if desired_claims.login_kubernetes.is_some()
+            && self.login_kubernetes != desired_claims.login_kubernetes
+        {
+            return Err(anyhow::anyhow!("Missing login:kubernetes"));
+        }
+
+        if desired_claims.org.is_some() && self.org != desired_claims.org {
+            return Err(anyhow::anyhow!("Missing desired org claim"));
+        }
+
+        if desired_claims.orgs.is_some() && self.orgs != desired_claims.orgs {
+            return Err(anyhow::anyhow!("Missing desired orgs claim"));
+        }
+
+        debug!("claims assertion passed");
+        Ok(())
+    }
+
+    pub fn merge(&mut self, from: Claims) {
+        if from.login_kubernetes.is_some() {
+            self.login_kubernetes = from.login_kubernetes;
+        }
+        if from.org.is_some() {
+            self.org = from.org;
+        }
+        if from.orgs.is_some() {
+            self.orgs = from.orgs;
+        }
+    }
+}
+
+impl Into<Claims> for Option<String> {
+    fn into(self) -> Claims {
+        match self {
+            None => Claims::default(),
+            Some(token) => {
+                let TokenSlices { claims, .. } = raw::split_token(&token)
+                    .context("unable to split token")
+                    .map_err(|e| {
+                        debug!("unable to split token: {e}");
+                        e
+                    })
+                    .unwrap_or(TokenSlices {
+                        header: "",
+                        claims: "",
+                        signature: "",
+                        message: "",
+                    });
+
+                serde_json::from_value::<Claims>(
+                    raw::decode_json_token_slice(claims)
+                        .context("unable to decode token")
+                        .map_err(|e| {
+                            debug!("unable to decode token: {e}");
+                            e
+                        })
+                        .unwrap_or_default(),
+                )
+                .map_err(|e| {
+                    debug!("unable to parse token: {e}");
+                    e
+                })
+                .unwrap_or_default()
+            }
+        }
+    }
 }
 
 impl TokenRepository {
+    pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
+
     /// Creates a [TokenRepository] given a [P6mEnvironment].
     pub fn new(environment: &P6mEnvironment) -> Result<TokenRepository> {
         let auth_dir = environment.config_dir().join("auth");
         fs::create_dir_all(&auth_dir)?;
-        Ok(TokenRepository {
+
+        let mut token_repository = TokenRepository {
             auth_dir,
             organization_id: None,
             environment: environment.clone(),
             force: false,
             scopes: vec![],
-        })
+            desired_claims: Claims::default(),
+        };
+
+        Self::DEFAULT_SCOPES.split(" ").for_each(|scope| {
+            token_repository.with_scope(scope, Claims::default());
+        });
+
+        Ok(token_repository)
     }
 
     pub fn force(mut self) -> Self {
@@ -64,6 +186,7 @@ impl TokenRepository {
             .context("unable to read claims from id token")?;
 
         let organization_id = id_claims
+            .clone()
             .orgs
             .and_then(|orgs| {
                 orgs.into_iter()
@@ -73,81 +196,120 @@ impl TokenRepository {
                     })
                     .map(|o| o.0)
             })
-            .context("missing desired organization in access token claims")?;
+            .context("missing desired organization in access token claims")
+            .map_err(|e| {
+                debug!("Unable to find organization {organization} in claims: {id_claims}",);
+                e
+            })?;
 
         self.with_organization_id(&organization_id)?;
+        self.with_scope(
+            format!("org:{}", organization_id).as_str(),
+            Claims {
+                org: Some(organization.clone()),
+                ..Default::default()
+            },
+        );
 
         Ok(())
     }
 
-    pub fn with_scope(&mut self, scope: &str) {
+    pub fn with_scope(&mut self, scope: &str, desired_claims: Claims) {
         self.scopes.push(scope.to_string());
+        self.scopes.sort();
+        self.scopes.dedup();
+        self.desired_claims.merge(desired_claims);
     }
 
-    pub async fn try_login(&mut self) -> Result<()> {
-        if self.force {
-            self.clear()?;
-            self.login().await?;
-        } else if self.should_refresh()? {
-            match self.refresh().await {
-                Ok(_) => return Ok(()),
-                Err(_) => self.login().await?,
-            };
-        }
+    pub async fn try_login(&mut self) -> Result<Self> {
+        let access_token_response = match self.force {
+            true => {
+                self.clear()?;
+                self.login("forced").await?
+            }
+            false => match self.try_refresh().await?.read_tokens().ok() {
+                Some(access_token_response) => access_token_response,
+                None => self.login("expired tokens").await?,
+            },
+        };
 
-        let granted_scopes: Vec<String> = self
-            .read_claims(AuthToken::Access)?
-            .context("unable to read claims")?
-            .scope
-            .context("missing scope claim")?
-            .split(" ")
-            .map(|s| s.to_string())
-            .collect();
+        self.assert_claims(&access_token_response, "post login")
+            .await?;
+        self.write_tokens(&access_token_response)?;
 
-        if !granted_scopes.iter().any(|s| !self.scopes.contains(s)) {
-            debug!(
-                "Missing desired scopes ({}), re-authenticating.",
-                self.scopes.join(" ")
-            );
-            self.login().await?;
-        }
-
-        Ok(())
+        Ok(self.clone())
     }
 
-    async fn login(&mut self) -> Result<Self> {
-        let mut device_code_request = openid::DeviceCodeRequest::new(&self.environment).await?;
+    pub async fn try_refresh(&mut self) -> Result<Self> {
+        let access_token_response = match (self.force, self.should_refresh()?) {
+            (true, _) => self.refresh("forced refresh").await?,
+            (_, true) => match self.refresh("expired tokens").await {
+                Ok(access_token_response) => access_token_response,
+                Err(_) => self.login("expired tokens").await?,
+            },
+            _ => self.read_tokens()?,
+        };
 
-        for scope in self.scopes.iter() {
-            device_code_request = device_code_request.with_scope(scope);
-        }
+        self.assert_claims(&access_token_response, "post refresh")
+            .await?;
+        self.write_tokens(&access_token_response)?;
+
+        Ok(self.clone())
+    }
+
+    async fn login(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+        debug!("attempting login due to: {reason}");
+        let device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
             .login()
             .await
-            .context("unable to exchange device code for tokens")?;
+            .context("unable to exchange device code for tokens")
+            .map_err(|e| {
+                debug!("Unable to exchange device code for tokens: {e}");
+                e
+            })?;
 
-        self.write_tokens(&access_token_response)?;
-
-        Ok(self.clone())
+        Ok(access_token_response)
     }
 
-    async fn refresh(&mut self) -> Result<Self> {
+    async fn refresh(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+        debug!("attempting refresh due to: {reason}");
+
         let refresh_token = self
             .read_token(AuthToken::Refresh)
             .context("unable to read refresh token")?
-            .context("missing refresh token")?;
+            .context("missing refresh token")
+            .map_err(|e| {
+                debug!("Unable to read refresh token: {e}");
+                e
+            })?;
 
-        let device_code_request = openid::DeviceCodeRequest::new(&self.environment).await?;
+        let mut device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
             .refresh(&refresh_token)
             .await
-            .context("unable to refresh tokens")?;
+            .context("unable to refresh tokens")
+            .map_err(|e| {
+                debug!("Unable to refresh tokens: {e}");
+                e
+            })?;
 
-        self.write_tokens(&access_token_response)?;
+        Ok(access_token_response)
+    }
 
-        Ok(self.clone())
+    async fn assert_claims(
+        &self,
+        access_token_resonse: &AccessTokenResponse,
+        reason: &str,
+    ) -> Result<()> {
+        debug!("asserting claims due to: {reason}");
+        let claims: Claims = Into::into(access_token_resonse.id_token.clone());
+        claims.assert(&self.desired_claims).map_err(|e| {
+            debug!("Claim assertion failed: {e}");
+            e
+        })
     }
 
     pub fn clear(&self) -> Result<()> {
@@ -160,7 +322,6 @@ impl TokenRepository {
     fn with_organization_id(&mut self, organization_id: &String) -> Result<()> {
         self.organization_id = Some(organization_id.clone());
         self.auth_dir = self.auth_dir.join(organization_id);
-        self.scopes.push(format!("org:{}", organization_id));
         fs::create_dir_all(&self.auth_dir)?;
         Ok(())
     }
@@ -176,7 +337,7 @@ impl TokenRepository {
             debug!("{path} does not exist");
             Ok(None)
         } else {
-            debug!("Reading {path}");
+            trace!("Reading {path}");
             Ok(Some(fs::read_to_string(path)?))
         }
     }
@@ -206,30 +367,6 @@ impl TokenRepository {
         Ok(claims)
     }
 
-    #[allow(dead_code)]
-    pub fn claim_keys(&self, token_type: AuthToken) -> Result<Vec<String>> {
-        let claims = match self
-            .read_token(token_type)
-            .context("missing token")?
-            .clone()
-        {
-            Some(token) => {
-                let TokenSlices { claims, .. } =
-                    raw::split_token(&token).context("unable to split token")?;
-
-                raw::decode_json_token_slice(claims)?
-                    .as_object()
-                    .context("unable to convert claims to object")?
-                    .keys()
-                    .map(|k| k.to_string())
-                    .collect()
-            }
-            None => vec![],
-        };
-
-        Ok(claims)
-    }
-
     pub fn is_logged_in(&self) -> bool {
         let id_token = self.read_token(AuthToken::Id).unwrap_or(None);
         let access_token = self.read_token(AuthToken::Access).unwrap_or(None);
@@ -243,45 +380,40 @@ impl TokenRepository {
     }
 
     pub fn should_refresh(&self) -> Result<bool> {
-        let id_exp = self.clone().read_expiration(AuthToken::Id)?;
-        let access_exp = self.clone().read_expiration(AuthToken::Access)?;
+        trace!("Checking if tokens should be refreshed");
 
-        let should_refresh = id_exp < Utc::now() - Duration::hours(1)
-            || access_exp < Utc::now() - Duration::hours(1);
+        let id_pre_exp = self.clone().read_expiration(AuthToken::Id)? - Duration::hours(1);
+        let access_pre_exp = self.clone().read_expiration(AuthToken::Access)? - Duration::hours(1);
 
-        debug!("Needs refresh: {should_refresh}");
+        let access_token_will_exp = Utc::now() > access_pre_exp;
+        let id_token_will_exp = Utc::now() > id_pre_exp;
 
-        Ok(should_refresh)
+        debug!("Access token expiring? {access_token_will_exp}");
+        debug!("Id token expiring? {id_token_will_exp}");
+
+        Ok(access_token_will_exp || id_token_will_exp)
     }
 
     // Get the expiration date of the desired token
     pub fn read_expiration(self, token_type: AuthToken) -> Result<DateTime<Utc>> {
         let claims = self.read_claims(token_type.clone())?.unwrap_or_default();
 
-        let exp = DateTime::from_timestamp(claims.exp, 0).context("unable to parse exp claim")?;
-        debug!("{token_type} expiration: {exp}");
+        let exp = DateTime::from_timestamp(claims.exp.unwrap_or(Utc::now().timestamp()), 0)
+            .context("unable to parse exp claim")?;
 
-        debug!("Expired? {}", exp < Utc::now() - Duration::hours(1));
+        debug!(
+            "{token_type} expiration: {}",
+            exp.with_timezone(&Local::now().timezone())
+        );
 
         Ok(exp)
-    }
-
-    #[allow(dead_code)]
-    pub fn has_claims(&self, token_type: AuthToken, desired_claims: &Vec<String>) -> Result<bool> {
-        let actual_claims = self.claim_keys(token_type)?;
-
-        debug!("Actual claims: {:?}", actual_claims);
-
-        Ok(desired_claims
-            .into_iter()
-            .all(|c| actual_claims.contains(c)))
     }
 
     /// Write a token to disk.
     pub fn write_token(&self, token_type: AuthToken, token: Option<&String>) -> Result<()> {
         if let Some(token) = token {
             let path = self.token_path(token_type);
-            debug!("Writing {path}");
+            trace!("Writing {path}");
             fs::write(path, token)?;
         }
         Ok(())
@@ -293,6 +425,19 @@ impl TokenRepository {
         self.write_token(AuthToken::Id, tokens.id_token.as_ref())?;
         self.write_token(AuthToken::Refresh, tokens.refresh_token.as_ref())?;
         Ok(())
+    }
+
+    pub fn read_tokens(&self) -> Result<AccessTokenResponse> {
+        let access_token = self.read_token(AuthToken::Access)?.unwrap_or_default();
+        let id_token = self.read_token(AuthToken::Id)?.unwrap_or_default();
+        let refresh_token = self.read_token(AuthToken::Refresh)?.unwrap_or_default();
+
+        Ok(AccessTokenResponse {
+            access_token: Some(access_token),
+            id_token: Some(id_token),
+            refresh_token: Some(refresh_token),
+            ..Default::default()
+        })
     }
 
     /// The root directory where auth-related files are stored.
@@ -309,14 +454,25 @@ impl TokenRepository {
 
     pub fn to_string(&self) -> String {
         if let Some(claims) = self.read_claims(AuthToken::Id).unwrap_or(None) {
-            let detail: Vec<String> = match (claims.email.as_ref(), claims.org.as_ref()) {
-                (Some(email), Some(org)) => {
+            let detail: Vec<String> = match (
+                claims.email.as_ref(),
+                claims.org.as_ref(),
+                claims.permissions.as_ref(),
+            ) {
+                (Some(email), Some(org), permissions) => {
                     vec![
-                        format!("Organization: {}", org),
                         format!("Email: {}", email),
+                        format!("Organization: {}", org),
+                        format!(
+                            "Permissions: {}",
+                            match permissions {
+                                Some(permissions) => permissions.join(", "),
+                                None => "None".to_string(),
+                            }
+                        ),
                     ]
                 }
-                (Some(email), None) => vec![format!("Email: {}", email)],
+                (Some(email), None, _) => vec![format!("Email: {}", email)],
                 _ => vec![],
             };
 
@@ -332,6 +488,46 @@ impl TokenRepository {
             .context("unable to get claims")?
             .context("not logged in")?;
         Ok(serde_json::to_string_pretty(&claims)?)
+    }
+
+    pub async fn scope_str(&mut self) -> Result<String> {
+        // Massage scopes through with_scope before returning
+
+        let existing_scopes: Vec<String> = self
+            .read_claims(AuthToken::Access)
+            .unwrap_or(Some(Claims::default()))
+            .unwrap_or_default()
+            .scope
+            .unwrap_or(Self::DEFAULT_SCOPES.to_string())
+            .split(" ")
+            .map(|s| s.to_string())
+            .collect();
+
+        for scope in existing_scopes {
+            self.with_scope(scope.as_str(), Claims::default());
+        }
+
+        Ok(self.scopes.join(" "))
+    }
+
+    pub async fn form_data(&mut self) -> Result<Vec<(&str, String)>> {
+        let mut form: Vec<(&str, String)> = vec![];
+
+        let mut acr_values: Vec<String> = vec![];
+
+        if let Some(organization_id) = self.organization_id.clone() {
+            acr_values.push(format!("urn:auth:acr:organization-id:{}", organization_id));
+        }
+
+        for scope in self.scope_str().await?.split(" ") {
+            acr_values.push(format!("urn:auth:acr:scope:{}", scope));
+        }
+
+        if acr_values.len() > 0 {
+            form.push(("acr_values".into(), acr_values.join(" ")));
+        }
+
+        Ok(form)
     }
 }
 

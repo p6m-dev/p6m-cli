@@ -13,7 +13,7 @@ use crate::{
     cli::P6mEnvironment,
 };
 
-const BASE_URL: &str = "https://auth0.us-east-2.aws.prd.p6m.run/api";
+const BASE_URL: &str = "https://auth.p6m.dev/api";
 
 pub async fn configure_auth0(
     environment: &P6mEnvironment,
@@ -25,6 +25,11 @@ pub async fn configure_auth0(
         token_repository.with_organization(organization)?;
     }
 
+    token_repository
+        .try_refresh()
+        .await
+        .context("Please re-run `p6m login`")?;
+
     let id_token = token_repository
         .clone()
         .read_token(AuthToken::Id)
@@ -33,7 +38,7 @@ pub async fn configure_auth0(
     let email = token_repository
         .read_claims(AuthToken::Id)
         .context("unable to read claims")?
-        .context("missing claims")?
+        .context("missing claims on the ID Token")?
         .email
         .context("missing email")?;
 
