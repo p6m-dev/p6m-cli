@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       level:
-        description: 'Version Bump Level'
+        description: "Version Bump Level"
         type: choice
         required: false
         default: patch
@@ -20,7 +20,7 @@ concurrency:
 
 env:
   BINARY_NAME: p6m
-  BINARY_HOMEPAGE: "https://github.com/${{ github.repository }}" 
+  BINARY_HOMEPAGE: "https://github.com/${{ github.repository }}"
   BINARY_DESCRIPTION: "p6m CLI"
   DOWNLOAD_PREFIX: "https://github.com/${{ github.repository }}/releases/download"
   DESTINATION_HOMEBREW_TAP: ${{ github.repository_owner }}/homebrew-tap
@@ -64,7 +64,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: v${{ steps.capture.outputs.version }}
         run: gh release create ${VERSION} --draft --verify-tag --title ${VERSION}
-
 
   build:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
@@ -110,10 +109,22 @@ jobs:
           echo "Building ${BINARY_NAME} for ${{ matrix.platform }}-${{ matrix.arch }}"
 
       - name: Enable Rust Dependency Caching
-        uses: Swatinem/rust-cache@v2 
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup vcpkg cache
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\buildtrees
+            C:\vcpkg\packages
+          key: vcpkg-${{ runner.os }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}
 
       - name: Install Windows Dependencies
-        if: matrix.platform == 'windows' 
+        if: matrix.platform == 'windows'
         shell: bash
         run: |
           VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT
@@ -198,7 +209,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: gh release edit "${VERSION}" --draft=false --latest
-
 
   update_homebrew_formula:
     name: Update Homebrew Forumula
