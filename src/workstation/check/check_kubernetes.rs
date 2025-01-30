@@ -12,7 +12,7 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 fn check_kubectl(_args: &ArgMatches) -> anyhow::Result<()> {
     perform_check(
         "kubectl",
-        Command::new("kubectl").arg("version"),
+        Command::new("kubectl").arg("version").arg("--client=true"),
         "core/kubernetes/#kubectl",
     )
 }
@@ -26,5 +26,9 @@ fn check_tilt(_args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_k9s(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("k9s", Command::new("k9s").arg("version"), "core/kubernetes/#k9s")
+    perform_check(
+        "k9s",
+        Command::new("k9s").arg("version"),
+        "core/kubernetes/#k9s",
+    )
 }
