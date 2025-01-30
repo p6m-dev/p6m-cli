@@ -23,7 +23,7 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
     match matches.subcommand() {
         Some(("auth0", _)) => configure_auth0(&environment, organization)
             .await
-            .context("Unable to SSO using Auth0. Please run `p6m login`."),
+            .context("Unable to SSO using Auth0"),
         Some(("aws", _)) => configure_aws().await,
         Some(("azure", _)) => configure_azure().await,
         Some((command, _)) => Err(Error::msg(format!(

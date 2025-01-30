@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use serde_json::Value;
 use url::Url;
 
 use super::types::Apps;
@@ -35,9 +36,7 @@ impl Client {
     async fn authorization(&self) -> Result<String> {
         Ok(format!(
             "Bearer {}",
-            self.token
-                .as_ref()
-                .context("Missing token. Please run `p6m login`.")?
+            self.token.as_ref().context("Missing token")?
         ))
     }
 
@@ -47,8 +46,7 @@ impl Client {
             .with_method(&reqwest::Method::GET)
             .with_endpoint("apps")?
             .send::<Apps>()
-            .await
-            .context("Failed to get apps")?
+            .await?
             .context("Missing apps")
     }
 }
@@ -167,6 +165,9 @@ impl Request {
                 (reqwest::StatusCode::CONFLICT, Some(true)) => {
                     return Ok(None);
                 }
+                (reqwest::StatusCode::UNAUTHORIZED, _) => {
+                    return Err(anyhow!("Please run `p6m login`"));
+                }
                 _ => {}
             }
 
@@ -183,18 +184,19 @@ impl Request {
                         payload,
                         status,
                         body,
-                    ))
-                    .context(error)?;
+                    ))?
                 }
                 None => {
                     return Err(anyhow!(
-                        "{} {} responded with status {}: {:?}",
+                        "{} {}: {}: {}",
                         method,
                         url,
                         status,
-                        body
-                    ))
-                    .context(error);
+                        match serde_json::from_str::<Value>(&body) {
+                            Ok(json) => format!("{}", json),
+                            Err(_) => format!("{body}"),
+                        }
+                    ))?
                 }
             }
         }

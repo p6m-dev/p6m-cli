@@ -1,7 +1,7 @@
 use crate::cli::P6mEnvironment;
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{format, DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
 use log::{debug, trace};
 use openid::AccessTokenResponse;
@@ -401,7 +401,10 @@ impl TokenRepository {
         let exp = DateTime::from_timestamp(claims.exp.unwrap_or(Utc::now().timestamp()), 0)
             .context("unable to parse exp claim")?;
 
-        debug!("{token_type} expiration: {exp}");
+        debug!(
+            "{token_type} expiration: {}",
+            exp.with_timezone(&Local::now().timezone())
+        );
 
         Ok(exp)
     }
