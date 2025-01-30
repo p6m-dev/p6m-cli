@@ -40,7 +40,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn readable_name(&self) -> String {
+    pub fn display_name(&self) -> String {
         self.name.clone()
     }
 
@@ -48,7 +48,7 @@ impl App {
         self.metadata
             .get("ClaimName")
             .map(|s| s.to_string())
-            .unwrap_or(self.readable_name())
+            .unwrap_or(self.display_name())
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '-' })
             .collect()
