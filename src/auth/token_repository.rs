@@ -243,11 +243,10 @@ impl TokenRepository {
     pub async fn try_refresh(&mut self) -> Result<Self> {
         let access_token_response = match (self.force, self.should_refresh()?) {
             (true, _) => self.refresh("forced refresh").await?,
-            (_, true) => self
-                .refresh("expired tokens")
-                .await
-                .ok()
-                .unwrap_or(self.login("expired tokens").await?),
+            (_, true) => match self.refresh("expired tokens").await {
+                Ok(access_token_response) => access_token_response,
+                Err(_) => self.login("expired tokens").await?,
+            },
             _ => self.read_tokens()?,
         };
 

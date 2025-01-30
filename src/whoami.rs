@@ -91,7 +91,9 @@ async fn k8s_auth(
     Ok(serde_json::json!({
         "kind": "ExecCredential",
         "apiVersion": "client.authentication.k8s.io/v1beta1",
-        "spec": {},
+        "spec": {
+            "interactive": true,
+        },
         "status": {
             "expirationTimestamp": token_repository.clone().read_expiration(AuthToken::Id)?,
             "token": token_repository.clone().read_token(AuthToken::Id)?,
