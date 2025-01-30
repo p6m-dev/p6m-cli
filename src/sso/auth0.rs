@@ -51,7 +51,7 @@ pub async fn configure_auth0(
     let kube_apps = apps.contain_scope("login:kubernetes");
 
     for app in kube_apps.clone() {
-        let name = app.name();
+        let name = app.machine_name();
         let url = app.url();
         let org = match app.org() {
             Some(org) => org,
@@ -152,7 +152,7 @@ async fn generate_kubeconfig(
         }),
     }];
 
-    // kubeconfig.current_context = Some(name.clone());
+    kubeconfig.current_context = Some(cluster_name.clone());
 
     Ok(kubeconfig)
 }
