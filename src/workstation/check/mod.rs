@@ -1,5 +1,4 @@
 use clap::{ArgMatches, ValueEnum};
-use strum::IntoEnumIterator;
 
 mod check_archetect;
 mod check_artifact_management;
@@ -10,8 +9,8 @@ mod check_javascript;
 mod check_kubernetes;
 mod check_python;
 mod check_scm;
-mod common;
 mod check_self;
+mod common;
 
 pub use common::Ecosystem;
 
@@ -21,21 +20,26 @@ pub async fn execute(args: &ArgMatches) -> anyhow::Result<()> {
             check_ecosystem(ecosystem, args).await?;
         }
     } else {
-        for ecosystem in Ecosystem::iter() {
-            check_ecosystem(&ecosystem, args).await?;
-        }
+        execute_interactive(args).await?;
+        // for ecosystem in Ecosystem::iter() {
+        //     check_ecosystem(&ecosystem, args).await?;
+        // }
     }
 
     Ok(())
 }
 
 pub async fn execute_interactive(args: &ArgMatches) -> anyhow::Result<()> {
-    let ecosystems = Ecosystem::value_variants().iter().map(|ecosystem| ecosystem.to_string())
+    let ecosystems = Ecosystem::value_variants()
+        .iter()
+        .map(|ecosystem| ecosystem.to_string())
         .collect::<Vec<String>>();
-    let prompt = inquire::MultiSelect::new("Ecosystems:", ecosystems);
+    let prompt = inquire::MultiSelect::new("Ecosystems:", ecosystems).with_default(&[0, 1]);
     match prompt.prompt_skippable() {
         Ok(Some(ecosystems)) => {
-            let ecosystems = ecosystems.iter().map(|ecosystem| Ecosystem::from_str(ecosystem, true).expect("Cannot fail"))
+            let ecosystems = ecosystems
+                .iter()
+                .map(|ecosystem| Ecosystem::from_str(ecosystem, true).expect("Cannot fail"))
                 .collect::<Vec<Ecosystem>>();
             for ecosystem in ecosystems {
                 check_ecosystem(&ecosystem, args).await?
@@ -46,7 +50,6 @@ pub async fn execute_interactive(args: &ArgMatches) -> anyhow::Result<()> {
     }
 
     Ok(())
-
 }
 
 async fn check_ecosystem(ecosystem: &Ecosystem, args: &ArgMatches) -> anyhow::Result<()> {

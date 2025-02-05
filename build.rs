@@ -23,13 +23,13 @@ fn generate_git_constants() -> std::io::Result<()> {
     };
 
     let is_dirty_output = Command::new("git")
-        .args(&["status", "--porcelain"])
+        .args(["status", "--porcelain"])
         .output()
         .expect("Failed to execute git status");
     let is_dirty = !is_dirty_output.stdout.is_empty();
 
     let commit_hash_output = Command::new("git")
-        .args(&["rev-parse", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .output()
         .expect("Failed to execute command");
     let commit_hash = from_utf8(&commit_hash_output.stdout).expect("Invalid UTF-8");
