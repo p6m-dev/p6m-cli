@@ -16,7 +16,7 @@ pub fn print_see_also(path: &str) {
 
 pub fn print_success_lines(lines: Lines<&[u8]>, all_lines: bool) {
     lines
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .enumerate()
         .for_each(|(index, line)| {
             if index == 0 || all_lines {
