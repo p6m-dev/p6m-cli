@@ -1,7 +1,15 @@
+use anyhow::Context;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
-use std::time;
+use serde_with::serde_as;
+use std::{
+    io::{stderr, stdin, Write},
+    time,
+};
 use tokio::time::sleep;
+use url::Url;
+
+use crate::{auth::serde::deserialize_string_option, AuthN};
 
 use super::TokenRepository;
 
@@ -9,14 +17,17 @@ use super::TokenRepository;
 pub struct OpenIdDiscoveryDocument {
     pub issuer: String,
     pub token_endpoint: String,
-    pub device_authorization_endpoint: String,
+    pub device_authorization_endpoint: Option<String>,
     pub userinfo_endpoint: String,
     pub jwks_uri: String,
 }
 
 impl OpenIdDiscoveryDocument {
-    pub async fn discover(domain: String) -> Result<Self, anyhow::Error> {
-        let url = format!("https://{}/.well-known/openid-configuration", domain);
+    pub async fn discover(auth_n: &AuthN) -> Result<Self, anyhow::Error> {
+        let url = auth_n
+            .discovery_uri
+            .clone()
+            .context("missing discovery uri")?;
         debug!("Fetching OpenID configuration from {}", url);
         let raw_response = reqwest::get(&url).await?.text().await?;
         trace!("OpenID configuration response: {}", raw_response);
@@ -33,7 +44,7 @@ pub struct DeviceCodeRequest {
 impl DeviceCodeRequest {
     pub async fn new(token_repository: &TokenRepository) -> Result<Self, anyhow::Error> {
         let openid_configuration =
-            OpenIdDiscoveryDocument::discover(token_repository.environment.domain.clone()).await?;
+            OpenIdDiscoveryDocument::discover(&token_repository.auth_n).await?;
 
         Ok(Self {
             token_repository: token_repository.clone(),
@@ -42,23 +53,13 @@ impl DeviceCodeRequest {
     }
 
     pub async fn login(&self) -> Result<AccessTokenResponse, anyhow::Error> {
-        let device_code_response = self
-            .send(
-                self.openid_configuration
-                    .device_authorization_endpoint
-                    .clone(),
-            )
-            .await
-            .map_err(|e| {
-                debug!("Failed to send device code request: {}", e);
-                e
-            })?;
+        let device_code_response = self.send().await.map_err(|e| {
+            debug!("Failed to send device code request: {}", e);
+            e
+        })?;
 
         let tokens = device_code_response
-            .exchange_for_token(
-                self.openid_configuration.token_endpoint.clone(),
-                self.token_repository.environment.client_id.clone(),
-            )
+            .exchange_for_token(&self.openid_configuration, &self.token_repository.auth_n)
             .await
             .map_err(|e| {
                 debug!("Failed to exchange device code for token: {}", e);
@@ -72,16 +73,12 @@ impl DeviceCodeRequest {
         &mut self,
         refresh_token: &String,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
-        let mut form: Vec<(&str, String)> = vec![
-            ("grant_type", "refresh_token".into()),
-            (
-                "client_id",
-                self.token_repository.environment.client_id.to_string(),
-            ),
-            ("refresh_token", refresh_token.to_string()),
-        ];
+        let mut form = self
+            .token_repository
+            .auth_n
+            .refresh_form_data(refresh_token)?;
 
-        form.extend(self.token_repository.form_data().await?);
+        form.extend(self.token_repository.acr_values_form_data().await?);
 
         let raw_response = reqwest::Client::new()
             .post(self.openid_configuration.token_endpoint.clone())
@@ -112,93 +109,102 @@ impl DeviceCodeRequest {
         Ok(response)
     }
 
-    async fn send(
-        &self,
-        device_authorization_endpoint: String,
-    ) -> Result<DeviceCodeResponse, anyhow::Error> {
-        let scope = self.token_repository.clone().scope_str().await?;
+    async fn send(&self) -> Result<DeviceCodeResponse, anyhow::Error> {
+        let url = self
+            .openid_configuration
+            .clone()
+            .device_authorization_endpoint
+            .context("missing device authorization endpoint")?;
+
+        let login_form_data = self
+            .token_repository
+            .auth_n
+            .login_form_data(&self.token_repository.clone().scope_str().await?)?;
+
         debug!(
-            "Sending device code request to {} with scopes {}",
-            device_authorization_endpoint, scope,
+            "Sending device code request to {} with data {:?}",
+            url, login_form_data,
         );
+
         let client = reqwest::Client::new();
         let raw_response = client
-            .post(device_authorization_endpoint)
-            .form(&[
-                (
-                    "client_id",
-                    self.token_repository.environment.client_id.clone(),
-                ),
-                ("scope", scope),
-                (
-                    "audience",
-                    self.token_repository.environment.audience.clone(),
-                ),
-            ])
+            .post(&url)
+            .form(&login_form_data)
             .send()
             .await?
             .text()
             .await?;
+
         trace!("Device code response: {}", raw_response);
+
         Ok(serde_json::from_str(&raw_response)?)
     }
 }
 
+#[serde_as]
 #[derive(Deserialize, Serialize, Clone)]
 pub struct DeviceCodeResponse {
     pub device_code: String,
     pub user_code: String,
-    pub verification_uri: String,
-    pub verification_uri_complete: String,
-    pub expires_in: u32,
-    pub interval: u32,
+    pub verification_url: Option<String>,
+    pub verification_uri: Option<String>,
+    pub verification_uri_complete: Option<String>,
+
+    #[serde(deserialize_with = "deserialize_string_option")]
+    pub expires_in: Option<String>,
+    #[serde(deserialize_with = "deserialize_string_option")]
+    pub interval: Option<String>,
 }
 
 impl DeviceCodeResponse {
     async fn exchange_for_token(
         &self,
-        token_endpoint: String,
-        client_id: String,
+        oidc: &OpenIdDiscoveryDocument,
+        auth_n: &AuthN,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
-        match webbrowser::open(&self.verification_uri_complete) {
-            Ok(_) => {
-                eprintln!(
-                    "Verify that the browser shows the following code and approve the request."
-                );
-            }
+        let url = self
+            .verification_uri_complete
+            .as_ref()
+            .or(self.verification_uri.as_ref())
+            .or(self.verification_url.as_ref())
+            .context("missing verification URL")?;
+
+        eprintln!();
+        eprintln!(
+            "First copy your one-time code: {}",
+            format!("{}", self.user_code)
+        );
+        eprintln!();
+        eprintln!(
+            "Press Enter to open {} in your browser...",
+            Url::parse(url)?.host().context("missing host")?
+        );
+        stderr().flush()?;
+        stdin().read_line(&mut String::new())?;
+
+        match webbrowser::open(url) {
             Err(_) => {
                 eprintln!("Failed to launch browser");
-                eprintln!(
-                    "Please visit {} and enter the code manually.",
-                    self.verification_uri
-                )
+                eprintln!("Please visit {} and enter the code.", url)
             }
+            _ => {}
         }
 
         eprintln!();
-        eprintln!("{}", self.user_code);
-        eprintln!();
-        eprintln!(
-            "The code will expire in {} minutes.",
-            chrono::Duration::seconds(self.expires_in as i64).num_minutes()
-        );
         eprintln!("Waiting for approval...");
+        eprintln!();
 
         loop {
             // Wait the specified amount of time before polling for an access token
-            sleep(time::Duration::from_secs(self.interval as u64)).await;
+            sleep(time::Duration::from_secs(
+                self.interval.clone().unwrap_or_default().parse::<u64>()?,
+            ))
+            .await;
 
             let client = reqwest::Client::new();
             let raw_response = client
-                .post(token_endpoint.clone())
-                .form(&[
-                    ("client_id", client_id.clone()),
-                    ("device_code", self.device_code.clone()),
-                    (
-                        "grant_type",
-                        "urn:ietf:params:oauth:grant-type:device_code".to_owned(),
-                    ),
-                ])
+                .post(oidc.token_endpoint.clone())
+                .form(&auth_n.device_code_form_data(&self.device_code)?)
                 .send()
                 .await?
                 .text()
@@ -217,7 +223,7 @@ impl DeviceCodeResponse {
 
             debug!(
                 "Access token not yet available. Will try again in {} seconds.",
-                self.interval
+                self.interval.clone().unwrap_or_default()
             );
         }
     }

@@ -1,6 +1,6 @@
-use crate::workstation::check::Ecosystem;
 use crate::models::artifact;
-use crate::{version, whoami};
+use crate::workstation::check::Ecosystem;
+use crate::{version, whoami, AuthN, AuthToken};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
@@ -232,6 +232,13 @@ pub fn command() -> Command {
                     .action(clap::ArgAction::Set)
                     .help("The JV Organization Name")
             )
+            .arg(
+                Arg::new("authn-app-id")
+                    .long("auth")
+                    .required(false)
+                    .action(clap::ArgAction::Set)
+                    .help("Use an application ID which contains metadata for the authentication flow (meta.p6m.dev/authn-provider)")
+            )
         )
         .arg(
             Arg::new("verbosity")
@@ -264,11 +271,10 @@ impl Environment {}
 pub struct P6mEnvironment {
     pub config_dir: Utf8PathBuf,
     pub kube_dir: Utf8PathBuf,
+    pub auth_dir: Utf8PathBuf,
 
     // Auth0
-    pub domain: String,
-    pub client_id: String,
-    pub audience: String,
+    pub auth_n: AuthN,
 }
 
 impl P6mEnvironment {
@@ -280,23 +286,38 @@ impl P6mEnvironment {
             .expect("Valid Home Directory Path")
             .expect("Utf8 Home Directory");
 
+        let config_dir = match dev {
+            true => home_dir.join(".p6m-dev"),
+            false => home_dir.join(".p6m"),
+        };
+
+        // TODO: Dev AuthN once we have a dev environment
+        let auth_n = AuthN {
+            client_id: Some("j4jEhWwe2od1eacxuocy0sfmbf7V4H8V".into()),
+            discovery_uri: Some("https://auth.p6m.run/.well-known/openid-configuration".into()),
+            params: Some(
+                vec![("audience".into(), "https://api.p6m.run/v1/".into())]
+                    .into_iter()
+                    .collect(),
+            ),
+            token_preference: Some(AuthToken::Id),
+        };
+
         let environment = match dev {
             true => {
                 println!("Using development environment");
                 Self {
-                    config_dir: home_dir.join(".p6m-dev"),
+                    config_dir: config_dir.clone(),
                     kube_dir: home_dir.join(".kube"),
-                    domain: "p6m-dev.us.auth0.com".to_owned(),
-                    client_id: "DkAzPi8iJITkDWKAoSjPON9jq6RSyCL9".to_owned(),
-                    audience: "https://api-dev.p6m.dev/v1/".to_owned(),
+                    auth_dir: config_dir.join("auth"),
+                    auth_n,
                 }
             }
             false => Self {
-                config_dir: home_dir.join(".p6m"),
+                config_dir: config_dir.clone(),
                 kube_dir: home_dir.join(".kube"),
-                domain: "auth.p6m.run".to_owned(),
-                client_id: "j4jEhWwe2od1eacxuocy0sfmbf7V4H8V".to_owned(),
-                audience: "https://api.p6m.run/v1/".to_owned(),
+                auth_dir: config_dir.join("auth"),
+                auth_n,
             },
         };
 
