@@ -1,8 +1,8 @@
-use crate::workstation::check::Ecosystem;
 use crate::models::artifact;
-use crate::{version, whoami};
+use crate::whoami;
+use crate::workstation::check::Ecosystem;
 use camino::{Utf8Path, Utf8PathBuf};
-use clap::{value_parser, Arg, ArgMatches, Command};
+use clap::{crate_version, value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
 use std::fs::create_dir_all;
 
@@ -10,7 +10,7 @@ pub fn command() -> Command {
     clap::command!()
         .name("") // this string is prepended to -V and --version, resulting in invalid json
         .author("P6m Dev")
-        .version(version::current_version())
+        .version(crate_version!())
         .about("p6m CLI")
         .subcommand(
             Command::new("completions")
