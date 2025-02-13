@@ -1,6 +1,5 @@
-use crate::version::current_version;
 use crate::workstation::check::common::*;
-use clap::ArgMatches;
+use clap::{crate_version, ArgMatches};
 use log::error;
 use octocrab::Octocrab;
 
@@ -15,7 +14,7 @@ pub async fn execute(_args: &ArgMatches) -> anyhow::Result<()> {
     {
         Ok(release) => {
             let latest_version = release.tag_name;
-            let current_version = format!("v{}", current_version().version());
+            let current_version = format!("v{}", crate_version!());
             if latest_version == current_version {
                 println!("\t{CHECK_SUCCESS} {latest_version}");
             } else {

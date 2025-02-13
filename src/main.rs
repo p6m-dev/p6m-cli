@@ -13,7 +13,6 @@ mod purge;
 mod repositories;
 mod sso;
 mod tilt;
-mod version;
 mod whoami;
 mod workstation;
 
