@@ -10,7 +10,7 @@ pub async fn configure_azure() -> Result<(), Error> {
         return Ok(());
     }
     for azure_config in azure_configs {
-        if azure_config.state == azure::AzureAccountState::Disabled {
+        if azure_config.state == Some(azure::AzureAccountState::Disabled) {
             continue;
         }
         match find_azure_access_token(azure_config.clone()) {
@@ -18,18 +18,23 @@ pub async fn configure_azure() -> Result<(), Error> {
             Err(err) => {
                 error!(
                     "Skipping {}, because failed to get access token. Error: {}",
-                    &azure_config.name, err
+                    &azure_config.name.clone().unwrap_or_default(),
+                    err
                 );
                 continue;
             }
         };
-        info!("list-clusters: {}", &azure_config.name);
+        info!(
+            "list-clusters: {}",
+            &azure_config.name.clone().unwrap_or_default()
+        );
         let aks_clusters = match get_aks_clusters(azure_config.clone()) {
             Ok(clusters) => clusters,
             Err(err) => {
-                error!(
+                warn!(
                     "Skipping {}, because failed to get AKS clusters. Error: {}",
-                    &azure_config.name, err
+                    &azure_config.name.clone().unwrap_or_default(),
+                    err
                 );
                 continue;
             }
@@ -112,7 +117,8 @@ fn find_azure_access_token(azure_config: AzureConfig) -> Result<(), Error> {
         if exist_status != 0 {
             return Err(Error::msg(format!(
                 "unable to get access token for {}: {}",
-                &azure_config.name, stderr
+                &azure_config.name.clone().unwrap_or_default(),
+                stderr
             )));
         }
     } else {
@@ -153,7 +159,8 @@ fn get_aks_clusters(azure_config: AzureConfig) -> Result<Vec<AzureAksCluster>, E
         if exist_status != 0 {
             return Err(Error::msg(format!(
                 "unable to list clusters for {}: {}",
-                &azure_config.name, stderr
+                &azure_config.name.clone().unwrap_or_default(),
+                stderr
             )));
         }
     } else {

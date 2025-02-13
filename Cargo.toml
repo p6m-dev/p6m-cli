@@ -60,3 +60,4 @@ time = "0.3.36"
 kube = { version = "0.83.0", features = ["admission", "client", "derive", "runtime"] }
 k8s-openapi = { version = "0.18.0", features = ["v1_26", "schemars"] }
 jsonwebtokens = "1.2.0"
+serde_with = "3.12.0"

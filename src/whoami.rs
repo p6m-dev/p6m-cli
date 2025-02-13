@@ -1,5 +1,6 @@
-use crate::auth::{AuthToken, Claims, TokenRepository};
+use crate::auth::{Claims, TokenRepository};
 use crate::cli::P6mEnvironment;
+use crate::AuthToken;
 use anyhow::{Context, Error};
 use clap::ArgMatches;
 use log::debug;
@@ -22,7 +23,11 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
         .try_get_one::<String>("organization-name")
         .unwrap_or(None);
 
-    let mut token_repository = TokenRepository::new(&environment)?;
+    let authn_app_id = matches
+        .try_get_one::<String>("authn-app-id")
+        .unwrap_or(None);
+
+    let mut token_repository = TokenRepository::new(&environment.auth_n, &environment.auth_dir)?;
 
     if let Some(organization) = organization {
         if output == Some(&Output::K8sAuth) {
@@ -56,6 +61,13 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
         }
     };
 
+    if let Some(id) = authn_app_id {
+        token_repository = token_repository
+            .with_authn_app_id(id)
+            .await
+            .context(format!("Unable to authenticate"))?;
+    }
+
     println!(
         "{}",
         match output {
@@ -86,7 +98,6 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 async fn k8s_auth(
     token_repository: &TokenRepository,
     _organization: &String,
-    // token_format: TokenFormat,
 ) -> Result<String, Error> {
     Ok(serde_json::json!({
         "kind": "ExecCredential",
@@ -95,8 +106,20 @@ async fn k8s_auth(
             "interactive": true,
         },
         "status": {
-            "expirationTimestamp": token_repository.clone().read_expiration(AuthToken::Id)?,
-            "token": token_repository.clone().read_token(AuthToken::Id)?,
+            "expirationTimestamp": token_repository.clone().read_expiration(
+                token_repository
+                    .auth_n
+                    .clone()
+                    .token_preference
+                    .unwrap_or(AuthToken::Id),
+            )?,
+            "token": token_repository.clone().read_token(
+                token_repository
+                    .auth_n
+                    .clone()
+                    .token_preference
+                    .unwrap_or(AuthToken::Id),
+            )?,
         }
     })
     .to_string())

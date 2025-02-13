@@ -2,7 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use url::Url;
 
-use super::types::Apps;
+use super::{types::Apps, App};
+
+const BASE_URL: &str = "https://auth.p6m.dev/api";
+// const BASE_URL: &str = "https://9b6hcz5ny6.execute-api.us-east-2.amazonaws.com/api";
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -14,7 +17,7 @@ pub struct Client {
 impl Client {
     pub fn new() -> Self {
         Self {
-            base_url: None,
+            base_url: Some(BASE_URL.to_string()),
             token: None,
             client: reqwest::Client::builder()
                 .user_agent(format!("p6m-cli/{}", env!("CARGO_PKG_VERSION")))
@@ -48,6 +51,17 @@ impl Client {
             .send::<Apps>()
             .await?
             .context("Missing apps")
+    }
+
+    pub async fn app(&self, id: &str) -> Result<App> {
+        Request::new(self)
+            .with_authorization(&self.authorization().await?)
+            .with_method(&reqwest::Method::GET)
+            .with_endpoint("app")?
+            .with_query("id", id)?
+            .send::<App>()
+            .await?
+            .context(format!("Unable to locate app {id}"))
     }
 }
 
@@ -98,7 +112,6 @@ impl Request {
         Ok(self)
     }
 
-    #[allow(dead_code)]
     pub fn with_query(mut self, key: &str, value: &str) -> Result<Self> {
         let url = self.url.as_ref().context("URL not found")?;
 
@@ -166,7 +179,7 @@ impl Request {
                     return Ok(None);
                 }
                 (reqwest::StatusCode::UNAUTHORIZED, _) => {
-                    return Err(anyhow!("Please run `p6m login`"));
+                    return Err(anyhow!("Unauthorized: Please run `p6m login`"));
                 }
                 _ => {}
             }
