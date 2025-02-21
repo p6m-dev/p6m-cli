@@ -1,7 +1,7 @@
 use crate::models::artifact;
-use crate::{version, whoami, AuthN, AuthToken};
 use crate::whoami;
 use crate::workstation::check::Ecosystem;
+use crate::{AuthN, AuthToken};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{crate_version, value_parser, Arg, ArgMatches, Command};
 use clap_complete::Shell;
