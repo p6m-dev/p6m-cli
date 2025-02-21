@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{Context, Error};
 use clap::ArgMatches;
 use inquire::{Confirm, MultiSelect};
 use log::{error, info, warn};
@@ -351,8 +351,10 @@ fn allow_deletes(org_path: &GithubLevel) -> bool {
 }
 
 pub(crate) fn create_octocrab() -> Result<Octocrab, Error> {
-    let token = std::env::var("GITHUB_TOKEN")
-        .expect("GITHUB_TOKEN env variable must be set with a classic personal token");
+    let token = std::env::var("GITHUB_TOKEN").context(
+        "GITHUB_TOKEN env variable must be set with a classic personal token.\n\n
+            See {DOCS_PREFIX}:",
+    )?;
 
     let client = Octocrab::builder().personal_token(token).build()?;
     Ok(client)
