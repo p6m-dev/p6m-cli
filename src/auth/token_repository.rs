@@ -28,9 +28,9 @@ pub enum TryReason {
 impl Display for TryReason {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TryReason::LoginCommand => write!(f, "for Login command"),
-            TryReason::SsoCommand => write!(f, "for Single Sign On"),
-            TryReason::WhoAmICommand => write!(f, "for WhoAmI command"),
+            TryReason::LoginCommand => write!(f, "for `login` command"),
+            TryReason::SsoCommand => write!(f, "for `sso` command"),
+            TryReason::WhoAmICommand => write!(f, "for `whoami` command"),
             TryReason::LoginTo(source) => write!(f, "to {}", source.name),
             TryReason::RefreshFor(source) => write!(f, "for {}", source.name),
         }
