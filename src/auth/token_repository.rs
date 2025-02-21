@@ -1,5 +1,6 @@
 use crate::{App, AuthN, AuthToken, Client};
 use anyhow::{Context, Result};
+use atty::Stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Duration, Local, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
@@ -8,11 +9,67 @@ use openid::AccessTokenResponse;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
+    env,
     fmt::{self, Display, Formatter},
     fs,
 };
 
 use super::openid;
+
+#[derive(Debug, Clone)]
+pub enum TryReason {
+    LoginCommand,
+    SsoCommand,
+    WhoAmICommand,
+    LoginTo(App),
+    RefreshFor(App),
+}
+
+impl Display for TryReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TryReason::LoginCommand => write!(f, "for Login command"),
+            TryReason::SsoCommand => write!(f, "for Single Sign On"),
+            TryReason::WhoAmICommand => write!(f, "for WhoAmI command"),
+            TryReason::LoginTo(source) => write!(f, "to {}", source.name),
+            TryReason::RefreshFor(source) => write!(f, "for {}", source.name),
+        }
+    }
+}
+
+pub enum TryAuthReason {
+    Login((TryReason, AuthReason)),
+    Refresh((TryReason, AuthReason)),
+}
+
+impl Display for TryAuthReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TryAuthReason::Login((try_reason, auth_reason)) => {
+                write!(f, "{auth_reason} credentials {try_reason}")
+            }
+            TryAuthReason::Refresh((try_reason, auth_reason)) => {
+                write!(f, "{auth_reason} tokens {try_reason}")
+            }
+        }
+    }
+}
+
+pub enum AuthReason {
+    Forcing,
+    Expired,
+    Assertion,
+}
+
+impl Display for AuthReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AuthReason::Forcing => write!(f, "Forcing"),
+            AuthReason::Expired => write!(f, "Expired"),
+            AuthReason::Assertion => write!(f, "Assertion"),
+        }
+    }
+}
 
 /// Acts as an abstraction for reading and writing tokens from disk.
 #[derive(Debug, Clone)]
@@ -229,7 +286,7 @@ impl TokenRepository {
         self.with_app(&app).context("Unable to set app")?;
 
         let token_repository = match self
-            .try_refresh()
+            .try_refresh(&TryReason::RefreshFor(app.clone()))
             .await
             .map_err(|e| {
                 debug!("Unable to refresh: {}", e);
@@ -241,7 +298,9 @@ impl TokenRepository {
             None => {
                 // TODO
                 debug!("Unable to refresh, trying to login");
-                self.force().try_login().await?
+                self.force()
+                    .try_login(&&TryReason::LoginTo(app.clone()))
+                    .await?
             }
         };
 
@@ -255,48 +314,80 @@ impl TokenRepository {
         self.desired_claims.merge(desired_claims);
     }
 
-    pub async fn try_login(&mut self) -> Result<Self> {
+    pub async fn try_login(&mut self, reason: &TryReason) -> Result<Self> {
         let access_token_response = match self.force {
             true => {
                 self.clear()?;
-                self.login("forced").await?
+                self.login(TryAuthReason::Login((reason.clone(), AuthReason::Forcing)))
+                    .await?
             }
-            false => match self.try_refresh().await?.read_tokens().ok() {
+            false => match self.try_refresh(reason).await?.read_tokens().ok() {
                 Some(access_token_response) => access_token_response,
-                None => self.login("expired tokens").await?,
+                None => {
+                    self.login(TryAuthReason::Login((reason.clone(), AuthReason::Expired)))
+                        .await?
+                }
             },
         };
 
-        self.assert_claims(&access_token_response, "post login")
-            .await?;
+        self.assert_claims(
+            &access_token_response,
+            TryAuthReason::Login((reason.clone(), AuthReason::Assertion)),
+        )
+        .await?;
         self.write_tokens(&access_token_response)?;
 
         Ok(self.clone())
     }
 
-    pub async fn try_refresh(&mut self) -> Result<Self> {
+    pub async fn try_refresh(&mut self, reason: &TryReason) -> Result<Self> {
         let access_token_response = match (self.force, self.should_refresh()?) {
-            (true, _) => self.refresh("forced refresh").await?,
-            (_, true) => match self.refresh("expired tokens").await {
+            (true, _) => {
+                self.refresh(TryAuthReason::Refresh((
+                    reason.clone(),
+                    AuthReason::Forcing,
+                )))
+                .await?
+            }
+            (_, true) => match self
+                .refresh(TryAuthReason::Refresh((
+                    reason.clone(),
+                    AuthReason::Expired,
+                )))
+                .await
+            {
                 Ok(access_token_response) => access_token_response,
-                Err(_) => self.login("expired tokens").await?,
+                Err(_) => {
+                    self.login(TryAuthReason::Login((reason.clone(), AuthReason::Expired)))
+                        .await?
+                }
             },
             _ => self.read_tokens()?,
         };
 
-        self.assert_claims(&access_token_response, "post refresh")
-            .await?;
+        self.assert_claims(
+            &access_token_response,
+            TryAuthReason::Refresh((reason.clone(), AuthReason::Assertion)),
+        )
+        .await?;
         self.write_tokens(&access_token_response)?;
 
         Ok(self.clone())
     }
 
-    async fn login(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+    async fn login(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
         debug!("attempting login due to: {reason}");
+        if atty::isnt(Stream::Stdin) {
+            let cmd = env::args().into_iter().collect::<Vec<_>>().join(" ");
+            return Err(anyhow::Error::msg(format!(
+                "Please run `{cmd}` in an interactive session."
+            )));
+        }
+
         let device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
-            .login()
+            .login(&reason)
             .await
             .context("unable to exchange device code for tokens")
             .map_err(|e| {
@@ -307,7 +398,7 @@ impl TokenRepository {
         Ok(access_token_response)
     }
 
-    async fn refresh(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+    async fn refresh(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
         debug!("attempting refresh due to: {reason}");
 
         let refresh_token = self
@@ -336,7 +427,7 @@ impl TokenRepository {
     async fn assert_claims(
         &self,
         access_token_resonse: &AccessTokenResponse,
-        reason: &str,
+        reason: TryAuthReason,
     ) -> Result<()> {
         debug!("asserting claims due to: {reason}");
         let claims: Claims = Into::into(access_token_resonse.id_token.clone());

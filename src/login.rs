@@ -1,4 +1,8 @@
-use crate::{auth::TokenRepository, cli::P6mEnvironment, whoami};
+use crate::{
+    auth::{TokenRepository, TryReason},
+    cli::P6mEnvironment,
+    whoami,
+};
 use anyhow::{Context, Error};
 use clap::ArgMatches;
 
@@ -18,11 +22,11 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 
     match refresh {
         Some(true) => token_repository
-            .try_refresh()
+            .try_refresh(&TryReason::LoginCommand)
             .await
             .context("Please re-run `p6m login`")?,
         _ => token_repository
-            .try_login()
+            .try_login(&TryReason::LoginCommand)
             .await
             .context("Please re-run `p6m login`")?,
     };

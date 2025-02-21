@@ -11,7 +11,7 @@ use url::Url;
 
 use crate::{auth::serde::deserialize_string_option, AuthN};
 
-use super::TokenRepository;
+use super::{TokenRepository, TryAuthReason};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenIdDiscoveryDocument {
@@ -52,14 +52,21 @@ impl DeviceCodeRequest {
         })
     }
 
-    pub async fn login(&self) -> Result<AccessTokenResponse, anyhow::Error> {
+    pub async fn login(
+        &self,
+        reason: &TryAuthReason,
+    ) -> Result<AccessTokenResponse, anyhow::Error> {
         let device_code_response = self.send().await.map_err(|e| {
             debug!("Failed to send device code request: {}", e);
             e
         })?;
 
         let tokens = device_code_response
-            .exchange_for_token(&self.openid_configuration, &self.token_repository.auth_n)
+            .exchange_for_token(
+                &self.openid_configuration,
+                &self.token_repository.auth_n,
+                reason,
+            )
             .await
             .map_err(|e| {
                 debug!("Failed to exchange device code for token: {}", e);
@@ -161,6 +168,7 @@ impl DeviceCodeResponse {
         &self,
         oidc: &OpenIdDiscoveryDocument,
         auth_n: &AuthN,
+        reason: &TryAuthReason,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
         let url = self
             .verification_uri_complete
@@ -169,16 +177,20 @@ impl DeviceCodeResponse {
             .or(self.verification_url.as_ref())
             .context("missing verification URL")?;
 
+        let host = Url::parse(url)?
+            .clone()
+            .host()
+            .context("missing host")?
+            .to_string();
+
+        eprintln!("{}, authentication with {} is necessary.", reason, host);
         eprintln!();
         eprintln!(
             "First copy your one-time code: {}",
             format!("{}", self.user_code)
         );
         eprintln!();
-        eprintln!(
-            "Press Enter to open {} in your browser...",
-            Url::parse(url)?.host().context("missing host")?
-        );
+        eprintln!("Press Enter to open {} in your browser...", host);
         stderr().flush()?;
         stdin().read_line(&mut String::new())?;
 
