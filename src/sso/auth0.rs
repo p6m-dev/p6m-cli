@@ -66,7 +66,7 @@ pub async fn configure_auth0(
 }
 
 async fn generate_kubeconfig(app: &App, email: &String) -> Result<(Kubeconfig, String), Error> {
-    let cluster_name = format!("p6m-{}", app.machine_name().replace("-auth0", ""));
+    let cluster_name = format!("{}.p6m", app.machine_name().replace("-auth0", ""));
     let url = app.url();
     let org = app.org().context("missing org")?;
     let ca = app.ca().context("Missing certificate authority")?;

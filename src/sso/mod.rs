@@ -30,16 +30,18 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
             "Unimplemented sso command: '{}'",
             command
         ))),
-        None => configure_sso(&environment).await,
+        None => configure_sso(&environment, organization).await,
     }?;
 
     Ok(())
 }
 
-async fn configure_sso(_environment: &P6mEnvironment) -> Result<(), Error> {
-    // TODO: enable auth0
-    // configure_auth0(environment).await?;
-    configure_aws().await?;
-    configure_azure().await?;
+async fn configure_sso(
+    environment: &P6mEnvironment,
+    organization: Option<&String>,
+) -> Result<(), Error> {
+    configure_auth0(environment, organization).await?;
+    // configure_aws().await?;
+    // configure_azure().await?;
     Ok(())
 }
