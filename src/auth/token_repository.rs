@@ -1,5 +1,6 @@
-use crate::cli::P6mEnvironment;
+use crate::{App, AuthN, AuthToken, Client};
 use anyhow::{Context, Result};
+use atty::Stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Duration, Local, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
@@ -8,20 +9,77 @@ use openid::AccessTokenResponse;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
+    env,
     fmt::{self, Display, Formatter},
     fs,
 };
 
 use super::openid;
 
+#[derive(Debug, Clone)]
+pub enum TryReason {
+    LoginCommand,
+    SsoCommand,
+    WhoAmICommand,
+    LoginTo(App),
+    RefreshFor(App),
+}
+
+impl Display for TryReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TryReason::LoginCommand => write!(f, "for `login` command"),
+            TryReason::SsoCommand => write!(f, "for `sso` command"),
+            TryReason::WhoAmICommand => write!(f, "for `whoami` command"),
+            TryReason::LoginTo(source) => write!(f, "to {}", source.name),
+            TryReason::RefreshFor(source) => write!(f, "for {}", source.name),
+        }
+    }
+}
+
+pub enum TryAuthReason {
+    Login((TryReason, AuthReason)),
+    Refresh((TryReason, AuthReason)),
+}
+
+impl Display for TryAuthReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TryAuthReason::Login((try_reason, auth_reason)) => {
+                write!(f, "{auth_reason} credentials {try_reason}")
+            }
+            TryAuthReason::Refresh((try_reason, auth_reason)) => {
+                write!(f, "{auth_reason} tokens {try_reason}")
+            }
+        }
+    }
+}
+
+pub enum AuthReason {
+    Forcing,
+    Expired,
+    Assertion,
+}
+
+impl Display for AuthReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AuthReason::Forcing => write!(f, "Forcing"),
+            AuthReason::Expired => write!(f, "Expired"),
+            AuthReason::Assertion => write!(f, "Assertion"),
+        }
+    }
+}
+
 /// Acts as an abstraction for reading and writing tokens from disk.
 #[derive(Debug, Clone)]
 pub struct TokenRepository {
-    pub environment: P6mEnvironment,
+    pub auth_n: AuthN,
     auth_dir: Utf8PathBuf,
     organization_id: Option<String>,
     force: bool,
     scopes: Vec<String>,
+    default_scopes: String,
     desired_claims: Claims,
 }
 
@@ -147,33 +205,37 @@ impl TokenRepository {
     pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
 
     /// Creates a [TokenRepository] given a [P6mEnvironment].
-    pub fn new(environment: &P6mEnvironment) -> Result<TokenRepository> {
-        let auth_dir = environment.config_dir().join("auth");
+    pub fn new(auth_n: &AuthN, auth_dir: &Utf8PathBuf) -> Result<TokenRepository> {
         fs::create_dir_all(&auth_dir)?;
 
         let mut token_repository = TokenRepository {
-            auth_dir,
+            auth_n: auth_n.clone(),
+            auth_dir: auth_dir.clone(),
             organization_id: None,
-            environment: environment.clone(),
             force: false,
             scopes: vec![],
+            default_scopes: Self::DEFAULT_SCOPES.to_string(),
             desired_claims: Claims::default(),
         };
 
-        Self::DEFAULT_SCOPES.split(" ").for_each(|scope| {
-            token_repository.with_scope(scope, Claims::default());
-        });
+        token_repository
+            .default_scopes
+            .clone()
+            .split(" ")
+            .for_each(|scope| {
+                token_repository.with_scope(scope, Claims::default());
+            });
 
         Ok(token_repository)
     }
 
-    pub fn force(mut self) -> Self {
+    pub fn force(&mut self) -> Self {
         self.force = true;
-        self
+        self.clone()
     }
 
-    pub fn with_organization(&mut self, organization: &String) -> Result<()> {
-        let token_repository = Self::new(&self.environment)?;
+    pub fn with_organization(&mut self, organization: &String) -> Result<Self> {
+        let token_repository = Self::new(&self.auth_n, &self.auth_dir)?;
 
         if !token_repository.is_logged_in() {
             return Err(anyhow::Error::msg(
@@ -211,7 +273,38 @@ impl TokenRepository {
             },
         );
 
-        Ok(())
+        Ok(self.clone())
+    }
+
+    pub async fn with_authn_app_id(&mut self, id: &String) -> Result<Self> {
+        let app = Client::new()
+            .with_token(self.read_token(AuthToken::Id)?)
+            .app(id)
+            .await
+            .context("Unable to get app")?;
+
+        self.with_app(&app).context("Unable to set app")?;
+
+        let token_repository = match self
+            .try_refresh(&TryReason::RefreshFor(app.clone()))
+            .await
+            .map_err(|e| {
+                debug!("Unable to refresh: {}", e);
+                e
+            })
+            .ok()
+        {
+            Some(token_repository) => token_repository,
+            None => {
+                // TODO
+                debug!("Unable to refresh, trying to login");
+                self.force()
+                    .try_login(&&TryReason::LoginTo(app.clone()))
+                    .await?
+            }
+        };
+
+        Ok(token_repository)
     }
 
     pub fn with_scope(&mut self, scope: &str, desired_claims: Claims) {
@@ -221,48 +314,80 @@ impl TokenRepository {
         self.desired_claims.merge(desired_claims);
     }
 
-    pub async fn try_login(&mut self) -> Result<Self> {
+    pub async fn try_login(&mut self, reason: &TryReason) -> Result<Self> {
         let access_token_response = match self.force {
             true => {
                 self.clear()?;
-                self.login("forced").await?
+                self.login(TryAuthReason::Login((reason.clone(), AuthReason::Forcing)))
+                    .await?
             }
-            false => match self.try_refresh().await?.read_tokens().ok() {
+            false => match self.try_refresh(reason).await?.read_tokens().ok() {
                 Some(access_token_response) => access_token_response,
-                None => self.login("expired tokens").await?,
+                None => {
+                    self.login(TryAuthReason::Login((reason.clone(), AuthReason::Expired)))
+                        .await?
+                }
             },
         };
 
-        self.assert_claims(&access_token_response, "post login")
-            .await?;
+        self.assert_claims(
+            &access_token_response,
+            TryAuthReason::Login((reason.clone(), AuthReason::Assertion)),
+        )
+        .await?;
         self.write_tokens(&access_token_response)?;
 
         Ok(self.clone())
     }
 
-    pub async fn try_refresh(&mut self) -> Result<Self> {
+    pub async fn try_refresh(&mut self, reason: &TryReason) -> Result<Self> {
         let access_token_response = match (self.force, self.should_refresh()?) {
-            (true, _) => self.refresh("forced refresh").await?,
-            (_, true) => match self.refresh("expired tokens").await {
+            (true, _) => {
+                self.refresh(TryAuthReason::Refresh((
+                    reason.clone(),
+                    AuthReason::Forcing,
+                )))
+                .await?
+            }
+            (_, true) => match self
+                .refresh(TryAuthReason::Refresh((
+                    reason.clone(),
+                    AuthReason::Expired,
+                )))
+                .await
+            {
                 Ok(access_token_response) => access_token_response,
-                Err(_) => self.login("expired tokens").await?,
+                Err(_) => {
+                    self.login(TryAuthReason::Login((reason.clone(), AuthReason::Expired)))
+                        .await?
+                }
             },
             _ => self.read_tokens()?,
         };
 
-        self.assert_claims(&access_token_response, "post refresh")
-            .await?;
+        self.assert_claims(
+            &access_token_response,
+            TryAuthReason::Refresh((reason.clone(), AuthReason::Assertion)),
+        )
+        .await?;
         self.write_tokens(&access_token_response)?;
 
         Ok(self.clone())
     }
 
-    async fn login(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+    async fn login(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
         debug!("attempting login due to: {reason}");
+        if atty::isnt(Stream::Stdin) {
+            let cmd = env::args().into_iter().collect::<Vec<_>>().join(" ");
+            return Err(anyhow::Error::msg(format!(
+                "Please run `{cmd}` in an interactive session."
+            )));
+        }
+
         let device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
-            .login()
+            .login(&reason)
             .await
             .context("unable to exchange device code for tokens")
             .map_err(|e| {
@@ -273,7 +398,7 @@ impl TokenRepository {
         Ok(access_token_response)
     }
 
-    async fn refresh(&mut self, reason: &str) -> Result<AccessTokenResponse> {
+    async fn refresh(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
         debug!("attempting refresh due to: {reason}");
 
         let refresh_token = self
@@ -302,7 +427,7 @@ impl TokenRepository {
     async fn assert_claims(
         &self,
         access_token_resonse: &AccessTokenResponse,
-        reason: &str,
+        reason: TryAuthReason,
     ) -> Result<()> {
         debug!("asserting claims due to: {reason}");
         let claims: Claims = Into::into(access_token_resonse.id_token.clone());
@@ -322,6 +447,16 @@ impl TokenRepository {
     fn with_organization_id(&mut self, organization_id: &String) -> Result<()> {
         self.organization_id = Some(organization_id.clone());
         self.auth_dir = self.auth_dir.join(organization_id);
+        fs::create_dir_all(&self.auth_dir)?;
+        Ok(())
+    }
+
+    fn with_app(&mut self, app: &App) -> Result<()> {
+        self.auth_n = app.auth_n.clone().context("missing authn")?;
+        self.auth_dir = self.auth_dir.join(format!("app_{}", app.client_id));
+        self.scopes = vec![];
+        self.default_scopes = "".into();
+        self.desired_claims = Claims::default();
         fs::create_dir_all(&self.auth_dir)?;
         Ok(())
     }
@@ -491,14 +626,12 @@ impl TokenRepository {
     }
 
     pub async fn scope_str(&mut self) -> Result<String> {
-        // Massage scopes through with_scope before returning
-
         let existing_scopes: Vec<String> = self
             .read_claims(AuthToken::Access)
             .unwrap_or(Some(Claims::default()))
             .unwrap_or_default()
             .scope
-            .unwrap_or(Self::DEFAULT_SCOPES.to_string())
+            .unwrap_or(self.default_scopes.clone())
             .split(" ")
             .map(|s| s.to_string())
             .collect();
@@ -510,8 +643,8 @@ impl TokenRepository {
         Ok(self.scopes.join(" "))
     }
 
-    pub async fn form_data(&mut self) -> Result<Vec<(&str, String)>> {
-        let mut form: Vec<(&str, String)> = vec![];
+    pub async fn acr_values_form_data(&mut self) -> Result<Vec<(String, String)>> {
+        let mut form: Vec<(String, String)> = vec![];
 
         let mut acr_values: Vec<String> = vec![];
 
@@ -529,15 +662,4 @@ impl TokenRepository {
 
         Ok(form)
     }
-}
-
-/// Enumeration of Auth Token Types
-#[derive(Debug, strum_macros::Display, Clone)]
-pub enum AuthToken {
-    #[strum(to_string = "ACCESS_TOKEN")]
-    Access,
-    #[strum(to_string = "ID_TOKEN")]
-    Id,
-    #[strum(to_string = "REFRESH_TOKEN")]
-    Refresh,
 }

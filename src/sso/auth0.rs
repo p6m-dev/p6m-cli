@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use anyhow::{Context, Error};
 use kube::config::{
@@ -8,32 +8,31 @@ use kube::config::{
 use log::{debug, info, warn};
 
 use crate::{
-    auth::{AuthToken, TokenRepository},
+    auth::{TokenRepository, TryReason},
     auth0,
     cli::P6mEnvironment,
+    App, AuthToken,
 };
-
-const BASE_URL: &str = "https://auth.p6m.dev/api";
 
 pub async fn configure_auth0(
     environment: &P6mEnvironment,
     organization: Option<&String>,
 ) -> Result<(), Error> {
-    let mut token_repository = TokenRepository::new(environment)?;
+    let mut token_repository = TokenRepository::new(&environment.auth_n, &environment.auth_dir)?;
 
     if let Some(organization) = organization {
         token_repository.with_organization(organization)?;
     }
 
     token_repository
-        .try_refresh()
+        .try_refresh(&TryReason::SsoCommand)
         .await
         .context("Please re-run `p6m login`")?;
 
     let id_token = token_repository
         .clone()
         .read_token(AuthToken::Id)
-        .context("unable to read access token")?;
+        .context("unable to read ID token")?;
 
     let email = token_repository
         .read_claims(AuthToken::Id)
@@ -42,48 +41,16 @@ pub async fn configure_auth0(
         .email
         .context("missing email")?;
 
-    let client = auth0::Client::new()
-        .with_base_url(&BASE_URL.to_string())
-        .with_token(id_token);
+    let client = auth0::Client::new().with_token(id_token);
 
     let apps = client.apps().await.context("Unable to fetch apps")?;
 
     let kube_apps = apps.contain_scope("login:kubernetes");
 
     for app in kube_apps.clone() {
-        let name = format!("p6m-{}", app.machine_name().replace("-auth0", ""));
-        let url = app.url();
-        let org = match app.org() {
-            Some(org) => org,
-            _ => {
-                warn!(
-                    "Skipping: Kubernetes App {:?} is missing organization.",
-                    name
-                );
-                continue;
-            }
-        };
-        let user_name = format!("{} ({})", email, org);
-        let certificate_authority_data = match app.certificate_authority() {
-            Ok(ca) => ca,
-            Err(_) => {
-                warn!(
-                    "Skipping: Kubernetes App {:?} is missing certificate authority.",
-                    name
-                );
-                continue;
-            }
-        };
-
-        debug!(
-            "found kube app: {:?}, url: {:?}, ca: {:?}",
-            name, url, certificate_authority_data
-        );
-
-        let kubeconfig =
-            generate_kubeconfig(&name, &user_name, &url, &org, &certificate_authority_data)
-                .await
-                .context("unable to generate kubeconfig")?;
+        let (kubeconfig, name) = generate_kubeconfig(&app, &email)
+            .await
+            .context("unable to generate kubeconfig")?;
 
         match merge_kubeconfig(kubeconfig, &name).await {
             Ok(update_res) => {
@@ -98,13 +65,17 @@ pub async fn configure_auth0(
     Ok(())
 }
 
-async fn generate_kubeconfig(
-    cluster_name: &String,
-    user_name: &String,
-    url: &String,
-    org: &String,
-    ca_data: &String,
-) -> Result<Kubeconfig, Error> {
+async fn generate_kubeconfig(app: &App, email: &String) -> Result<(Kubeconfig, String), Error> {
+    let cluster_name = format!("p6m-{}", app.machine_name().replace("-auth0", ""));
+    let url = app.url();
+    let org = app.org().context("missing org")?;
+    let ca = app.ca().context("Missing certificate authority")?;
+
+    debug!(
+        "found kube app: {:?}, url: {:?}, ca: {:?}",
+        cluster_name, url, ca
+    );
+
     let mut kubeconfig = Kubeconfig::default();
     kubeconfig.api_version = Some("v1".to_string());
     kubeconfig.kind = Some("Config".to_string());
@@ -117,26 +88,56 @@ async fn generate_kubeconfig(
         name: url.clone(),
         cluster: Some(Cluster {
             server: Some(url.clone()),
-            certificate_authority_data: Some(ca_data.clone()),
+            certificate_authority_data: Some(ca.clone()),
             ..Default::default()
         }),
     }];
+
+    let mut command: Vec<String> = vec![
+        "p6m".into(),
+        "whoami".into(),
+        "--org".into(),
+        org.clone().into(),
+        "--output".into(),
+        "k8s-auth".into(),
+    ];
+
+    let env: Vec<HashMap<String, String>> = vec![];
+
+    let user_name = match app.auth_n {
+        Some(_) => {
+            // Seed the command with the app's client_id
+            // - the client_id will be used to fetch meta.p6m.dev/authn-provider during whoami commands
+            command.push("--auth".into());
+            command.push(app.client_id.clone());
+
+            // Leaving this here in case we need to add environment variables to the exec command
+            // env.push(
+            //     vec![
+            //         ("name".to_string(), "SOME_ENV_VAR".to_string()),
+            //         ("value".to_string(), "some value".to_string()),
+            //     ]
+            //     .into_iter()
+            //     .collect(),
+            // );
+
+            format!("{} ({})", email, cluster_name)
+        }
+        None => format!("{} ({})", email, org),
+    };
 
     kubeconfig.auth_infos = vec![NamedAuthInfo {
         name: user_name.clone(),
         auth_info: Some(AuthInfo {
             exec: Some(ExecConfig {
                 api_version: Some("client.authentication.k8s.io/v1beta1".to_string()),
-                command: Some("p6m".into()),
-                args: Some(vec![
-                    "whoami".into(),
-                    "--org".into(),
-                    org.into(),
-                    "--output".into(),
-                    "k8s-auth".into(),
-                ]),
-                interactive_mode: None,
-                env: None,
+                command: command.first().cloned(),
+                args: Some(command.iter().skip(1).cloned().collect()),
+                interactive_mode: Some(config::ExecInteractiveMode::Always),
+                env: match env.len() {
+                    0 => None,
+                    _ => Some(env),
+                },
                 drop_env: None,
             }),
             ..Default::default()
@@ -154,7 +155,7 @@ async fn generate_kubeconfig(
 
     kubeconfig.current_context = Some(cluster_name.clone());
 
-    Ok(kubeconfig)
+    Ok((kubeconfig, cluster_name))
 }
 
 async fn merge_kubeconfig(kubeconfig: Kubeconfig, name: &String) -> Result<String, Error> {

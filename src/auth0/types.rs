@@ -1,8 +1,22 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
+use log::trace;
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
+
+#[derive(Debug, Serialize, Deserialize, strum_macros::Display, Clone)]
+pub enum AuthToken {
+    #[strum(to_string = "ACCESS_TOKEN")]
+    #[serde(rename = "access_token")]
+    Access,
+    #[strum(to_string = "ID_TOKEN")]
+    #[serde(rename = "id_token")]
+    Id,
+    #[strum(to_string = "REFRESH_TOKEN")]
+    #[serde(rename = "refresh_token")]
+    Refresh,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Apps(Vec<App>);
@@ -29,6 +43,61 @@ impl IntoIterator for Apps {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AuthN {
+    pub client_id: Option<String>,
+    pub discovery_uri: Option<String>,
+    pub token_preference: Option<AuthToken>,
+    pub params: Option<BTreeMap<String, String>>,
+}
+
+impl AuthN {
+    pub fn login_form_data(&self, scope: &String) -> Result<BTreeMap<String, String>> {
+        let mut form = BTreeMap::new();
+        form.insert(
+            "client_id".to_string(),
+            self.client_id.clone().context("missing client_id")?,
+        );
+        if scope.trim().len() > 0 {
+            form.insert("scope".to_string(), scope.clone());
+        }
+        if let Some(params) = self.params.clone() {
+            form.extend(params);
+        }
+        trace!("login_form_data: {:?}", form);
+        Ok(form)
+    }
+
+    pub fn device_code_form_data(&self, device_code: &String) -> Result<BTreeMap<String, String>> {
+        let mut form = BTreeMap::new();
+        form.insert(
+            "client_id".to_string(),
+            self.client_id.clone().context("missing client_id")?,
+        );
+        form.insert("code".to_string(), device_code.to_string());
+        form.insert("device_code".to_string(), device_code.to_string());
+        form.insert(
+            "grant_type".to_string(),
+            "urn:ietf:params:oauth:grant-type:device_code".to_string(),
+        );
+        trace!("device_code_form_data: {:?}", form);
+        Ok(form)
+    }
+
+    pub fn refresh_form_data(&self, refresh_token: &String) -> Result<BTreeMap<String, String>> {
+        let mut form = BTreeMap::new();
+        form.insert(
+            "client_id".to_string(),
+            self.client_id.clone().context("missing client_id")?,
+        );
+        form.insert("refresh_token".to_string(), refresh_token.to_string());
+        form.insert("grant_type".to_string(), "refresh_token".to_string());
+        trace!("refresh_form_data: {:?}", form);
+        Ok(form)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct App {
     pub name: String,
     pub org: Option<String>,
@@ -37,6 +106,7 @@ pub struct App {
     pub origins: Vec<String>,
     pub scopes: Vec<String>,
     pub metadata: BTreeMap<String, String>,
+    pub auth_n: Option<AuthN>,
 }
 
 impl App {
@@ -62,7 +132,7 @@ impl App {
         self.org.clone()
     }
 
-    pub fn certificate_authority(&self) -> Result<String> {
+    pub fn ca(&self) -> Result<String> {
         let certificate_authority = self
             .origins
             .iter()
