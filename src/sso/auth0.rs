@@ -133,7 +133,7 @@ async fn generate_kubeconfig(app: &App, email: &String) -> Result<(Kubeconfig, S
                 api_version: Some("client.authentication.k8s.io/v1beta1".to_string()),
                 command: command.first().cloned(),
                 args: Some(command.iter().skip(1).cloned().collect()),
-                interactive_mode: Some(config::ExecInteractiveMode::Always),
+                interactive_mode: Some(config::ExecInteractiveMode::IfAvailable),
                 env: match env.len() {
                     0 => None,
                     _ => Some(env),
