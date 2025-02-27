@@ -43,5 +43,7 @@ jobs:
         if: runner.os == 'Windows'
       - run: vcpkg install openssl:x64-windows-static-md
         if: runner.os == 'Windows'
+      - name: Test it!
+        run: cargo test -- --show-output
       - name: Build it!
         run: cargo build --release

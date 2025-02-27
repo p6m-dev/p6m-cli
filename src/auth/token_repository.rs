@@ -7,6 +7,7 @@ use jsonwebtokens::raw::{self, TokenSlices};
 use log::{debug, trace};
 use openid::AccessTokenResponse;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::BTreeMap,
     env,
@@ -114,6 +115,12 @@ pub struct Claims {
         skip_serializing_if = "Option::is_none"
     )]
     pub permissions: Option<Vec<String>>,
+
+    #[serde(
+        rename = "https://p6m.dev/v1/roles",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub roles: Option<Vec<String>>,
 }
 
 impl Display for Claims {
@@ -130,37 +137,77 @@ impl Display for Claims {
 
 impl Claims {
     pub fn assert(&self, desired_claims: &Claims) -> Result<()> {
-        debug!("asserting claims: {}", self);
-        debug!("desired_claims: {}", desired_claims);
+        debug!("asserting claims: {:?}", self);
+        debug!("desired_claims: {:?}", desired_claims);
 
-        if desired_claims.login_kubernetes.is_some()
-            && self.login_kubernetes != desired_claims.login_kubernetes
-        {
-            return Err(anyhow::anyhow!("Missing login:kubernetes"));
-        }
+        let self_json = serde_json::to_value(self)?;
+        let desired_json = serde_json::to_value(desired_claims)?;
 
-        if desired_claims.org.is_some() && self.org != desired_claims.org {
-            return Err(anyhow::anyhow!("Missing desired org claim"));
-        }
+        let self_map = self_json
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("self is not a JSON object"))?;
+        let desired_map = desired_json
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("desired_claims is not a JSON object"))?;
 
-        if desired_claims.orgs.is_some() && self.orgs != desired_claims.orgs {
-            return Err(anyhow::anyhow!("Missing desired orgs claim"));
-        }
+        desired_map.iter()
+            // Only check non-null desired values.
+            .filter(|(_, v)| !v.is_null())
+            .try_for_each(|(key, desired_value)| -> Result<()> {
+                let self_value = self_map.get(key)
+                    .ok_or_else(|| anyhow::anyhow!("Missing field: {}", key))?;
+                match (desired_value, self_value) {
+                    // Handle array matching.
+                    (Value::Array(exp_arr), Value::Array(act_arr)) => match exp_arr.as_slice() {
+                        // If expected array is empty, the actual array must also be empty.
+                        [] if act_arr.is_empty() => Ok(()),
+                        [] => Err(anyhow::anyhow!(
+                            "Field {} mismatch: expected empty array, found {:?}", key, self_value
+                        )),
+                        // If expected array contains exactly one element "*" then actual array must be non-empty.
+                        [Value::String(s)] if s == "*" => {
+                            if act_arr.is_empty() {
+                                Err(anyhow::anyhow!(
+                                    "Field {} mismatch: expected non-empty array due to wildcard, found empty array", key
+                                ))
+                            } else {
+                                Ok(())
+                            }
+                        },
+                        // Otherwise, require an exact match.
+                        _ if exp_arr == act_arr => Ok(()),
+                        _ => Err(anyhow::anyhow!(
+                            "Field {} mismatch: expected {:?}, found {:?}", key, desired_value, self_value
+                        )),
+                    },
+                    // For non-array values, require exact equality.
+                    _ if desired_value == self_value => Ok(()),
+                    _ => Err(anyhow::anyhow!(
+                        "Field {} mismatch: expected {:?}, found {:?}", key, desired_value, self_value
+                    )),
+                }
+            })?;
 
         debug!("claims assertion passed");
         Ok(())
     }
 
     pub fn merge(&mut self, from: Claims) {
-        if from.login_kubernetes.is_some() {
-            self.login_kubernetes = from.login_kubernetes;
+        let mut existing =
+            serde_json::to_value(self.clone()).expect("Failed to serialize existing");
+        let incoming = serde_json::to_value(from).expect("Failed to serialize incoming");
+
+        if let (Value::Object(existing_map), Value::Object(incoming_map)) =
+            (&mut existing, &incoming)
+        {
+            for (key, incoming_value) in incoming_map {
+                if !incoming_value.is_null() {
+                    existing_map.insert(key.clone(), incoming_value.clone());
+                }
+            }
         }
-        if from.org.is_some() {
-            self.org = from.org;
-        }
-        if from.orgs.is_some() {
-            self.orgs = from.orgs;
-        }
+
+        *self = serde_json::from_value(existing).expect("Failed to deserialize merged");
     }
 }
 
@@ -205,7 +252,7 @@ impl TokenRepository {
     pub const DEFAULT_SCOPES: &str = "openid email offline_access login:cli";
 
     /// Creates a [TokenRepository] given a [P6mEnvironment].
-    pub fn new(auth_n: &AuthN, auth_dir: &Utf8PathBuf) -> Result<TokenRepository> {
+    pub fn new(auth_n: &AuthN, auth_dir: &Utf8PathBuf) -> Result<Self> {
         fs::create_dir_all(&auth_dir)?;
 
         let mut token_repository = TokenRepository {
@@ -229,12 +276,12 @@ impl TokenRepository {
         Ok(token_repository)
     }
 
-    pub fn force(&mut self) -> Self {
+    pub fn force(&mut self) -> &mut Self {
         self.force = true;
-        self.clone()
+        self
     }
 
-    pub fn with_organization(&mut self, organization: &String) -> Result<Self> {
+    pub fn with_organization(&mut self, organization: &String) -> Result<&mut Self> {
         let token_repository = Self::new(&self.auth_n, &self.auth_dir)?;
 
         if !token_repository.is_logged_in() {
@@ -273,10 +320,10 @@ impl TokenRepository {
             },
         );
 
-        Ok(self.clone())
+        Ok(self)
     }
 
-    pub async fn with_authn_app_id(&mut self, id: &String) -> Result<Self> {
+    pub async fn with_authn_app_id(&mut self, id: &String) -> Result<&mut Self> {
         let app = Client::new()
             .with_token(self.read_token(AuthToken::Id)?)
             .app(id)
@@ -285,7 +332,7 @@ impl TokenRepository {
 
         self.with_app(&app).context("Unable to set app")?;
 
-        let token_repository = match self
+        match self
             .try_refresh(&TryReason::RefreshFor(app.clone()))
             .await
             .map_err(|e| {
@@ -294,27 +341,28 @@ impl TokenRepository {
             })
             .ok()
         {
-            Some(token_repository) => token_repository,
             None => {
                 // TODO
                 debug!("Unable to refresh, trying to login");
                 self.force()
                     .try_login(&&TryReason::LoginTo(app.clone()))
-                    .await?
+                    .await?;
             }
+            _ => {}
         };
 
-        Ok(token_repository)
+        Ok(self)
     }
 
-    pub fn with_scope(&mut self, scope: &str, desired_claims: Claims) {
+    pub fn with_scope(&mut self, scope: &str, desired_claims: Claims) -> &mut Self {
         self.scopes.push(scope.to_string());
         self.scopes.sort();
         self.scopes.dedup();
         self.desired_claims.merge(desired_claims);
+        self
     }
 
-    pub async fn try_login(&mut self, reason: &TryReason) -> Result<Self> {
+    pub async fn try_login(&mut self, reason: &TryReason) -> Result<&mut Self> {
         let access_token_response = match self.force {
             true => {
                 self.clear()?;
@@ -337,10 +385,10 @@ impl TokenRepository {
         .await?;
         self.write_tokens(&access_token_response)?;
 
-        Ok(self.clone())
+        Ok(self)
     }
 
-    pub async fn try_refresh(&mut self, reason: &TryReason) -> Result<Self> {
+    pub async fn try_refresh(&mut self, reason: &TryReason) -> Result<&mut Self> {
         let access_token_response = match (self.force, self.should_refresh()?) {
             (true, _) => {
                 self.refresh(TryAuthReason::Refresh((
@@ -372,7 +420,7 @@ impl TokenRepository {
         .await?;
         self.write_tokens(&access_token_response)?;
 
-        Ok(self.clone())
+        Ok(self)
     }
 
     async fn login(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
@@ -661,5 +709,232 @@ impl TokenRepository {
         }
 
         Ok(form)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty_array_match() {
+        let actual = Claims {
+            roles: Some(vec![]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec![]),
+            ..Default::default()
+        };
+
+        // Expected: Pass because both arrays are empty.
+        assert!(actual.assert(&desired).is_ok());
+    }
+
+    #[test]
+    fn test_empty_array_mismatch() {
+        let actual = Claims {
+            roles: Some(vec!["user".to_string()]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec![]),
+            ..Default::default()
+        };
+
+        // Expected: Fail because desired is empty but actual is not.
+        assert!(actual.assert(&desired).is_err());
+    }
+
+    #[test]
+    fn test_wildcard_array_match() {
+        let actual = Claims {
+            roles: Some(vec!["superadmins".to_string()]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec!["*".to_string()]),
+            ..Default::default()
+        };
+
+        // Expected: Pass because wildcard requires a non-empty array.
+        assert!(actual.assert(&desired).is_ok());
+    }
+
+    #[test]
+    fn test_wildcard_array_mismatch() {
+        let actual = Claims {
+            roles: Some(vec![]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec!["*".to_string()]),
+            ..Default::default()
+        };
+
+        // Expected: Fail because the actual array is empty.
+        assert!(actual.assert(&desired).is_err());
+    }
+
+    #[test]
+    fn test_exact_array_match() {
+        let actual = Claims {
+            roles: Some(vec!["admin".to_string(), "user".to_string()]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec!["admin".to_string(), "user".to_string()]),
+            ..Default::default()
+        };
+
+        // Expected: Pass because the arrays exactly match.
+        assert!(actual.assert(&desired).is_ok());
+    }
+
+    #[test]
+    fn test_exact_array_mismatch() {
+        let actual = Claims {
+            roles: Some(vec!["admin".to_string(), "user".to_string()]),
+            ..Default::default()
+        };
+        let desired = Claims {
+            roles: Some(vec!["user".to_string(), "admin".to_string()]), // order differs
+            ..Default::default()
+        };
+
+        // Expected: Fail because ordering matters for exact equality.
+        assert!(actual.assert(&desired).is_err());
+    }
+
+    #[test]
+    fn test_non_array_field_match() {
+        let actual = Claims {
+            email: Some("test@example.com".to_string()),
+            ..Default::default()
+        };
+        let desired = Claims {
+            email: Some("test@example.com".to_string()),
+            ..Default::default()
+        };
+
+        // Expected: Pass because the emails match.
+        assert!(actual.assert(&desired).is_ok());
+    }
+
+    #[test]
+    fn test_non_array_field_mismatch() {
+        let actual = Claims {
+            email: Some("actual@example.com".to_string()),
+            ..Default::default()
+        };
+        let desired = Claims {
+            email: Some("desired@example.com".to_string()),
+            ..Default::default()
+        };
+
+        // Expected: Fail because the emails differ.
+        assert!(actual.assert(&desired).is_err());
+    }
+
+    #[test]
+    fn test_missing_field() {
+        // For example, desired has login_kubernetes set but actual does not.
+        let actual = Claims::default();
+        let desired = Claims {
+            login_kubernetes: Some("true".to_string()),
+            ..Default::default()
+        };
+
+        // Expected: Fail because login_kubernetes is missing in actual.
+        assert!(actual.assert(&desired).is_err());
+    }
+
+    #[test]
+    fn test_merge_no_change_with_empty_incoming() {
+        let mut original = Claims {
+            email: Some("test@example.com".to_string()),
+            login_kubernetes: Some("true".to_string()),
+            ..Default::default()
+        };
+        // Incoming claims are all None, so nothing should change.
+        let incoming = Claims::default();
+        original.merge(incoming);
+        assert_eq!(original.email, Some("test@example.com".to_string()));
+        assert_eq!(original.login_kubernetes, Some("true".to_string()));
+    }
+
+    #[test]
+    fn test_merge_overwrites_non_null() {
+        let mut original = Claims {
+            email: Some("old@example.com".to_string()),
+            login_kubernetes: Some("false".to_string()),
+            roles: Some(vec!["admin".to_string()]),
+            ..Default::default()
+        };
+
+        let incoming = Claims {
+            email: Some("new@example.com".to_string()),
+            // login_kubernetes is None in incoming, so it should not override the original.
+            login_kubernetes: None,
+            roles: Some(vec!["superadmin".to_string()]),
+            ..Default::default()
+        };
+
+        original.merge(incoming);
+        assert_eq!(original.email, Some("new@example.com".to_string()));
+        // The original login_kubernetes should remain unchanged.
+        assert_eq!(original.login_kubernetes, Some("false".to_string()));
+        // Roles should be overwritten.
+        assert_eq!(original.roles, Some(vec!["superadmin".to_string()]));
+    }
+
+    #[test]
+    fn test_merge_orgs_update() {
+        use std::collections::BTreeMap;
+
+        let mut original_orgs = BTreeMap::new();
+        original_orgs.insert("org1".to_string(), "member".to_string());
+
+        let mut incoming_orgs = BTreeMap::new();
+        incoming_orgs.insert("org2".to_string(), "admin".to_string());
+
+        let mut original = Claims {
+            orgs: Some(original_orgs),
+            ..Default::default()
+        };
+
+        let incoming = Claims {
+            orgs: Some(incoming_orgs),
+            ..Default::default()
+        };
+
+        original.merge(incoming);
+
+        let mut expected = BTreeMap::new();
+        expected.insert("org2".to_string(), "admin".to_string());
+        // Expect that the entire orgs field is replaced by the incoming value.
+        assert_eq!(original.orgs, Some(expected));
+    }
+
+    #[test]
+    fn test_merge_partial_fields() {
+        let mut original = Claims {
+            email: Some("initial@example.com".to_string()),
+            scope: Some("read".to_string()),
+            org: Some("org1".to_string()),
+            ..Default::default()
+        };
+
+        let incoming = Claims {
+            scope: Some("write".to_string()),
+            // Incoming org is None; original org should remain.
+            org: None,
+            ..Default::default()
+        };
+
+        original.merge(incoming);
+        assert_eq!(original.email, Some("initial@example.com".to_string()));
+        assert_eq!(original.scope, Some("write".to_string()));
+        assert_eq!(original.org, Some("org1".to_string()));
     }
 }

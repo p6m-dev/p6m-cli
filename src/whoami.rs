@@ -72,6 +72,14 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 
     let mut token_repository = TokenRepository::new(&environment.auth_n, &environment.auth_dir)?;
 
+    token_repository.with_scope(
+        "roles",
+        Claims {
+            roles: Some(vec!["*".into()]), // ["*"] is a special case to allow any
+            ..Default::default()
+        },
+    );
+
     if let Some(organization) = organization {
         if output == Some(&Output::K8sAuth) {
             token_repository.with_scope(
@@ -82,12 +90,13 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
                 },
             );
         }
+
         token_repository
             .with_organization(organization)
             .context("Unknown organizatization")?;
     }
 
-    token_repository = match token_repository
+    match token_repository
         .try_refresh(&TryReason::WhoAmICommand)
         .await
         .map_err(|e| {
@@ -111,7 +120,7 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
         (Some(Output::K8sAuth), Some(authn_app_id)) => {
             // Skip re-authenticating if kuberlr is resolving the version
             if !env::var("KUBERLR_RESOLVING_VERSION").is_ok() {
-                token_repository = token_repository
+                token_repository
                     .with_authn_app_id(authn_app_id)
                     .await
                     .context(format!("Unable to authenticate"))?;
