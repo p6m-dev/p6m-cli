@@ -15,16 +15,18 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 
     let mut token_repository = TokenRepository::new(&environment.auth_n, &environment.auth_dir)?;
 
-    token_repository.force().with_scope(
-        "roles",
-        Claims {
-            roles: Some(vec!["*".into()]), // ["*"] is a special case to allow any
-            ..Default::default()
-        },
-    );
+    token_repository.force();
 
     if let Some(organization) = organization {
-        token_repository.with_organization(organization)?;
+        token_repository
+            .with_organization(organization)?
+            .with_scope(
+                "roles",
+                Claims {
+                    roles: Some(vec!["*".into()]), // ["*"] is a special case to allow any
+                    ..Default::default()
+                },
+            );
     }
 
     match refresh {
