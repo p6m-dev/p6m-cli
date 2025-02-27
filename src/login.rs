@@ -1,5 +1,5 @@
 use crate::{
-    auth::{TokenRepository, TryReason},
+    auth::{Claims, TokenRepository, TryReason},
     cli::P6mEnvironment,
     whoami,
 };
@@ -13,11 +13,20 @@ pub async fn execute(environment: P6mEnvironment, matches: &ArgMatches) -> Resul
 
     let refresh = matches.try_get_one::<bool>("refresh").unwrap_or(None);
 
-    let mut token_repository =
-        TokenRepository::new(&environment.auth_n, &environment.auth_dir)?.force();
+    let mut token_repository = TokenRepository::new(&environment.auth_n, &environment.auth_dir)?;
+
+    token_repository.force();
 
     if let Some(organization) = organization {
-        token_repository.with_organization(organization)?;
+        token_repository
+            .with_organization(organization)?
+            .with_scope(
+                "roles",
+                Claims {
+                    roles: Some(vec!["*".into()]), // ["*"] is a special case to allow any
+                    ..Default::default()
+                },
+            );
     }
 
     match refresh {
