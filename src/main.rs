@@ -5,6 +5,7 @@ mod auth0;
 mod cli;
 mod completions;
 mod context;
+mod jwt;
 mod logging;
 mod login;
 mod models;
@@ -39,6 +40,7 @@ async fn main() {
         Some(("open", subargs)) => open::execute(subargs).await,
         Some(("purge", subargs)) => purge::execute(subargs),
         Some(("repositories", subargs)) => repositories::execute(subargs).await,
+        Some(("jwt", subargs)) => jwt::execute(environment, subargs).await,
         Some(("tilt", subargs)) => tilt::execute(subargs).await,
         Some(("sso", subargs)) => sso::execute(environment, subargs).await,
         Some(("login", subargs)) => login::execute(environment, subargs).await,
