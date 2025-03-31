@@ -324,7 +324,7 @@ impl TokenRepository {
     }
 
     pub async fn with_authn_app_id(&mut self, id: &String) -> Result<&mut Self> {
-        let app = Client::new()
+        let app = Client::new(&self.auth_n.apps_uri())
             .with_token(self.read_token(AuthToken::Id)?)
             .app(id)
             .await
@@ -703,6 +703,8 @@ impl TokenRepository {
         for scope in self.scope_str().await?.split(" ") {
             acr_values.push(format!("urn:auth:acr:scope:{}", scope));
         }
+
+        acr_values.extend(self.auth_n.acr_values.clone().unwrap_or_default());
 
         if acr_values.len() > 0 {
             form.push(("acr_values".into(), acr_values.join(" ")));

@@ -292,7 +292,6 @@ impl P6mEnvironment {
             false => home_dir.join(".p6m"),
         };
 
-        // TODO: Dev AuthN once we have a dev environment
         let auth_n = AuthN {
             client_id: Some("j4jEhWwe2od1eacxuocy0sfmbf7V4H8V".into()),
             discovery_uri: Some("https://auth.p6m.run/.well-known/openid-configuration".into()),
@@ -301,12 +300,18 @@ impl P6mEnvironment {
                     .into_iter()
                     .collect(),
             ),
+            apps_uri: Some("https://auth.p6m.dev/api".into()),
+            acr_values: None,
             token_preference: Some(AuthToken::Id),
         };
 
         let environment = match dev {
             true => {
                 println!("Using development environment");
+                let mut auth_n = auth_n.clone();
+                auth_n.apps_uri =
+                    Some("https://9b6hcz5ny6.execute-api.us-east-2.amazonaws.com/api".into());
+                auth_n.acr_values = Some(vec!["auth:urn:dev:true".into()]);
                 Self {
                     config_dir: config_dir.clone(),
                     kube_dir: home_dir.join(".kube"),
