@@ -48,9 +48,15 @@ pub struct AuthN {
     pub discovery_uri: Option<String>,
     pub token_preference: Option<AuthToken>,
     pub params: Option<BTreeMap<String, String>>,
+    pub apps_uri: Option<String>,
+    pub scopes: Option<Vec<String>>,
 }
 
 impl AuthN {
+    pub fn apps_uri(&self) -> Option<String> {
+        return self.apps_uri.clone();
+    }
+
     pub fn login_form_data(&self, scope: &String) -> Result<BTreeMap<String, String>> {
         let mut form = BTreeMap::new();
         form.insert(

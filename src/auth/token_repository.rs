@@ -260,7 +260,7 @@ impl TokenRepository {
             auth_dir: auth_dir.clone(),
             organization_id: None,
             force: false,
-            scopes: vec![],
+            scopes: auth_n.scopes.clone().unwrap_or_default(),
             default_scopes: Self::DEFAULT_SCOPES.to_string(),
             desired_claims: Claims::default(),
         };
@@ -324,7 +324,7 @@ impl TokenRepository {
     }
 
     pub async fn with_authn_app_id(&mut self, id: &String) -> Result<&mut Self> {
-        let app = Client::new()
+        let app = Client::new(&self.auth_n.apps_uri())
             .with_token(self.read_token(AuthToken::Id)?)
             .app(id)
             .await

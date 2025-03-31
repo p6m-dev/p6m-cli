@@ -4,9 +4,6 @@ use url::Url;
 
 use super::{types::Apps, App};
 
-const BASE_URL: &str = "https://auth.p6m.dev/api";
-// const BASE_URL: &str = "https://9b6hcz5ny6.execute-api.us-east-2.amazonaws.com/api";
-
 #[derive(Debug, Clone)]
 pub struct Client {
     base_url: Option<String>,
@@ -15,9 +12,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub fn new(base_url: &Option<String>) -> Self {
         Self {
-            base_url: Some(BASE_URL.to_string()),
+            base_url: base_url.clone(),
             token: None,
             client: reqwest::Client::builder()
                 .user_agent(format!("p6m-cli/{}", env!("CARGO_PKG_VERSION")))

@@ -41,7 +41,7 @@ pub async fn configure_auth0(
         .email
         .context("missing email")?;
 
-    let client = auth0::Client::new().with_token(id_token);
+    let client = auth0::Client::new(&token_repository.auth_n.apps_uri()).with_token(id_token);
 
     let apps = client.apps().await.context("Unable to fetch apps")?;
 
