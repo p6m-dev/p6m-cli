@@ -311,7 +311,7 @@ impl P6mEnvironment {
                 let mut auth_n = auth_n.clone();
                 auth_n.apps_uri =
                     Some("https://9b6hcz5ny6.execute-api.us-east-2.amazonaws.com/api".into());
-                auth_n.acr_values = Some(vec!["auth:urn:dev:true".into()]);
+                auth_n.acr_values = Some(vec!["urn:auth:dev:true".into()]);
                 Self {
                     config_dir: config_dir.clone(),
                     kube_dir: home_dir.join(".kube"),

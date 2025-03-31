@@ -85,6 +85,9 @@ impl AuthN {
             "grant_type".to_string(),
             "urn:ietf:params:oauth:grant-type:device_code".to_string(),
         );
+        if let Some(acr_values) = self.acr_values.clone() {
+            form.insert("acr_values".to_string(), acr_values.join(" "));
+        }
         trace!("device_code_form_data: {:?}", form);
         Ok(form)
     }
