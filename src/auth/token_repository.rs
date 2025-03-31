@@ -260,7 +260,7 @@ impl TokenRepository {
             auth_dir: auth_dir.clone(),
             organization_id: None,
             force: false,
-            scopes: vec![],
+            scopes: auth_n.scopes.clone().unwrap_or_default(),
             default_scopes: Self::DEFAULT_SCOPES.to_string(),
             desired_claims: Claims::default(),
         };
@@ -703,8 +703,6 @@ impl TokenRepository {
         for scope in self.scope_str().await?.split(" ") {
             acr_values.push(format!("urn:auth:acr:scope:{}", scope));
         }
-
-        acr_values.extend(self.auth_n.acr_values.clone().unwrap_or_default());
 
         if acr_values.len() > 0 {
             form.push(("acr_values".into(), acr_values.join(" ")));
