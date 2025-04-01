@@ -68,7 +68,7 @@ pub fn command() -> Command {
                 .arg(
                     Arg::new("expire-days")
                     .long("expire-days")
-                        .alias("expires")
+                        .alias("expire")
                         .short('e')
                         .required(false)
                         .value_parser(value_parser!(u32).range(1..))
