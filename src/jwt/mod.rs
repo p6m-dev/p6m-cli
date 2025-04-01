@@ -8,7 +8,7 @@ use crate::cli::P6mEnvironment;
 
 pub async fn execute(_: P6mEnvironment, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
-        Some(("unsecured", _)) => generate_jwt(matches),
+        Some(("insecure", _)) => generate_jwt(matches),
         Some((command, _)) => Err(Error::msg(format!(
             "Unimplemented sso command: '{}'",
             command
@@ -21,7 +21,7 @@ pub async fn execute(_: P6mEnvironment, matches: &ArgMatches) -> Result<()> {
 
 pub fn generate_jwt(_: &ArgMatches) -> Result<()> {
     let exp = chrono::Utc::now() + Duration::days(1);
-    let alg = Algorithm::new_hmac(AlgorithmID::HS256, "secret")?;
+    let alg = Algorithm::new_hmac(AlgorithmID::HS256, "insecure")?;
     let header = json!({
         "alg": alg.name(),
         "typ": "JWT"
