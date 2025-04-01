@@ -8,7 +8,7 @@ use crate::cli::P6mEnvironment;
 
 pub async fn execute(_: P6mEnvironment, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
-        Some(("insecure", _)) => generate_jwt(matches),
+        Some(("insecure", args)) => generate_jwt(args),
         Some((command, _)) => Err(Error::msg(format!(
             "Unimplemented sso command: '{}'",
             command
@@ -19,13 +19,15 @@ pub async fn execute(_: P6mEnvironment, matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-pub fn generate_jwt(_: &ArgMatches) -> Result<()> {
-    let exp = chrono::Utc::now() + Duration::days(1);
+pub fn generate_jwt(args: &ArgMatches) -> Result<()> {
     let alg = Algorithm::new_hmac(AlgorithmID::HS256, "insecure")?;
+    let expires_days = args
+        .get_one::<u32>("expire-days")
+        .expect("Required by clap");
+    let exp = chrono::Utc::now() + Duration::days((*expires_days) as i64);
     let header = json!({
         "alg": alg.name(),
         "typ": "JWT"
-
     });
     let claims = json!({
         "iss": "http://example.com",
@@ -36,6 +38,6 @@ pub fn generate_jwt(_: &ArgMatches) -> Result<()> {
         "scope": "products:read products:write orders:read",
     });
     let token = encode(&header, &claims, &alg)?;
-    println!("{token}");
+    print!("{token}");
     Ok(())
 }

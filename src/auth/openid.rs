@@ -185,21 +185,15 @@ impl DeviceCodeResponse {
 
         eprintln!("{}, authentication with {} is necessary.", reason, host);
         eprintln!();
-        eprintln!(
-            "First copy your one-time code: {}",
-            format!("{}", self.user_code)
-        );
+        eprintln!("First copy your one-time code: {}", self.user_code);
         eprintln!();
         eprintln!("Press Enter to open {} in your browser...", host);
         stderr().flush()?;
         stdin().read_line(&mut String::new())?;
 
-        match webbrowser::open(url) {
-            Err(_) => {
-                eprintln!("Failed to launch browser");
-                eprintln!("Please visit {} and enter the code.", url)
-            }
-            _ => {}
+        if webbrowser::open(url).is_err() {
+            eprintln!("Failed to launch browser");
+            eprintln!("Please visit {} and enter the code.", url)
         }
 
         eprintln!();
