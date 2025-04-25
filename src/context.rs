@@ -201,5 +201,21 @@ async fn set_context(
         )
     );
 
+    let cargo_config_dir = {
+        let mut config = home_dir.to_path_buf();
+        config.push(".cargo");
+        config
+    };
+
+    new_file_with_content!(
+        cargo_config_dir,
+        "credentials.toml",
+        render!(
+            include_str!("../resources/cargo/credentials.toml.j2"),
+            organization_name,
+            artifactory_identity_token,
+        )
+    );
+
     Ok(())
 }
