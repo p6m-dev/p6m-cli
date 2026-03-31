@@ -16,6 +16,22 @@ pub enum AuthToken {
     #[strum(to_string = "REFRESH_TOKEN")]
     #[serde(rename = "refresh_token")]
     Refresh,
+    #[strum(to_string = "CLIENT_ID")]
+    #[serde(rename = "client_id")]
+    ClientId,
+}
+
+impl AuthToken {
+    /// Returns true if the client_id value requires interactive browser auth
+    /// instead of device code flow.
+    pub fn is_interactive(client_id: &str) -> bool {
+        match client_id {
+            // Azure Kubernetes AAD client ID — supports Web Browser Interactive login.
+            // https://azure.github.io/kubelogin/concepts/aks.html
+            "80faf920-1908-4b52-b5ef-a8e7bedfc67a" => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +115,14 @@ impl AuthN {
         form.insert("grant_type".to_string(), "refresh_token".to_string());
         trace!("refresh_form_data: {:?}", form);
         Ok(form)
+    }
+
+    /// Returns additional scopes declared on this auth provider (e.g. Azure server_id scopes).
+    pub fn additional_scopes(&self) -> String {
+        self.scopes
+            .as_ref()
+            .map(|s| s.join(" "))
+            .unwrap_or_default()
     }
 }
 

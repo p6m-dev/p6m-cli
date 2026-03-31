@@ -9,15 +9,16 @@ use std::{
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{auth::serde::deserialize_string_option, AuthN};
+use crate::{auth::serde::deserialize_string_option, AuthN, AuthToken};
 
-use super::{TokenRepository, TryAuthReason};
+use super::{interactive, TokenRepository, TryAuthReason};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenIdDiscoveryDocument {
     pub issuer: String,
     pub token_endpoint: String,
     pub device_authorization_endpoint: Option<String>,
+    pub authorization_endpoint: Option<String>,
     pub userinfo_endpoint: String,
     pub jwks_uri: String,
 }
@@ -55,7 +56,17 @@ impl DeviceCodeRequest {
     pub async fn login(
         &self,
         reason: &TryAuthReason,
+        client_id: &str,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
+        if AuthToken::is_interactive(client_id) {
+            return interactive::login(&self.token_repository, &self.openid_configuration, reason)
+                .await
+                .map_err(|e| {
+                    debug!("Failed interactive browser login: {}", e);
+                    e
+                });
+        }
+
         let device_code_response = self.send().await.map_err(|e| {
             debug!("Failed to send device code request: {}", e);
             e
@@ -80,6 +91,26 @@ impl DeviceCodeRequest {
         &mut self,
         refresh_token: &String,
     ) -> Result<AccessTokenResponse, anyhow::Error> {
+        let client_id = self
+            .token_repository
+            .auth_n
+            .client_id
+            .clone()
+            .unwrap_or_default();
+
+        if AuthToken::is_interactive(&client_id) {
+            return interactive::refresh(
+                &self.token_repository,
+                &self.openid_configuration,
+                refresh_token,
+            )
+            .await
+            .map_err(|e| {
+                debug!("Failed to refresh interactive token: {}", e);
+                e
+            });
+        }
+
         let mut form = self
             .token_repository
             .auth_n
@@ -267,7 +298,7 @@ impl AccessTokenResponse {
         self.error.clone().is_some_and(|e| e == "access_denied")
     }
 
-    fn as_error(&self) -> anyhow::Error {
+    pub fn as_error(&self) -> anyhow::Error {
         anyhow::anyhow!(
             "{}: {}",
             self.error.clone().unwrap_or_default(),

@@ -432,14 +432,15 @@ impl TokenRepository {
             )));
         }
 
+        let client_id = self.auth_n.client_id.clone().unwrap_or_default();
         let device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
-            .login(&reason)
+            .login(&reason, &client_id)
             .await
-            .context("unable to exchange device code for tokens")
+            .context("unable to login")
             .map_err(|e| {
-                debug!("Unable to exchange device code for tokens: {e}");
+                debug!("Unable to login: {e}");
                 e
             })?;
 
@@ -565,11 +566,13 @@ impl TokenRepository {
     pub fn should_refresh(&self) -> Result<bool> {
         trace!("Checking if tokens should be refreshed");
 
-        let id_pre_exp = self.clone().read_expiration(AuthToken::Id)? - Duration::hours(1);
         let access_pre_exp = self.clone().read_expiration(AuthToken::Access)? - Duration::hours(1);
-
         let access_token_will_exp = Utc::now() > access_pre_exp;
-        let id_token_will_exp = Utc::now() > id_pre_exp;
+
+        let id_token_will_exp = match self.clone().read_expiration(AuthToken::Id) {
+            Ok(exp) => Utc::now() > (exp - Duration::hours(1)),
+            Err(_) => false,
+        };
 
         debug!("Access token expiring? {access_token_will_exp}");
         debug!("Id token expiring? {id_token_will_exp}");
@@ -607,6 +610,7 @@ impl TokenRepository {
         self.write_token(AuthToken::Access, tokens.access_token.as_ref())?;
         self.write_token(AuthToken::Id, tokens.id_token.as_ref())?;
         self.write_token(AuthToken::Refresh, tokens.refresh_token.as_ref())?;
+        self.write_token(AuthToken::ClientId, self.auth_n.client_id.as_ref())?;
         Ok(())
     }
 
