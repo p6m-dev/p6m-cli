@@ -1,6 +1,6 @@
-use std::process::Command;
-use clap::ArgMatches;
 use crate::workstation::check::common::*;
+use clap::ArgMatches;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_docker(args)?;
@@ -8,5 +8,9 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_docker(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Docker", Command::new("docker").arg("--version"), "core/docker/")
+    perform_check(
+        "Docker",
+        Command::new("docker").arg("--version"),
+        "core/docker/",
+    )
 }

@@ -1,5 +1,5 @@
-use clap::ArgMatches;
 use crate::workstation::check::common::*;
+use clap::ArgMatches;
 
 const ARTIFACTORY_TOKEN_KEY: &str = "ARTIFACTORY_IDENTITY_TOKEN";
 const ARTIFACTORY_USER_KEY: &str = "ARTIFACTORY_USERNAME";
@@ -11,8 +11,10 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 
 fn check_artifact_management_tokens(_args: &ArgMatches) -> anyhow::Result<()> {
     println!("\n{CHECK_PREFIX} Checking Artifact Management Tokens");
-    if let (Ok(identity), Ok(token)) =
-        (std::env::var(ARTIFACTORY_USER_KEY), std::env::var(ARTIFACTORY_TOKEN_KEY)) {
+    if let (Ok(identity), Ok(token)) = (
+        std::env::var(ARTIFACTORY_USER_KEY),
+        std::env::var(ARTIFACTORY_TOKEN_KEY),
+    ) {
         if identity.is_empty() || token.is_empty() {
             print_missing_token_error();
         }

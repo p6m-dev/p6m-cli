@@ -22,3 +22,6 @@ target/
 # Gradle
 .gradle/
 .resourceCache
+
+# Claude Code
+.claude/

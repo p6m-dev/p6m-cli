@@ -1,7 +1,7 @@
-use std::process::Command;
+use crate::workstation::check::common::*;
 use clap::ArgMatches;
 use dirs::home_dir;
-use crate::workstation::check::common::*;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_java(args)?;
@@ -20,9 +20,11 @@ pub fn check_maven_binary(_args: &ArgMatches) -> anyhow::Result<()> {
 
 pub fn check_maven_settings(_args: &ArgMatches) -> anyhow::Result<()> {
     println!("\n{CHECK_PREFIX} Checking Maven Configuration");
-    if !home_dir().expect("Home Directory Required")
+    if !home_dir()
+        .expect("Home Directory Required")
         .join(".m2/settings.xml")
-        .exists() {
+        .exists()
+    {
         println!("\t{CHECK_ERROR} Maven is not configured correctly for your environment.");
         print_see_also("java/#maven");
     } else {

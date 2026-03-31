@@ -1,7 +1,7 @@
-use std::process::Command;
+use crate::workstation::check::common::*;
 use clap::ArgMatches;
 use dirs::home_dir;
-use crate::workstation::check::common::*;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_archetect_binary(args)?;
@@ -10,14 +10,20 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_archetect_binary(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Archetect", Command::new("archetect").arg("--version"), "core/archetect/#installation")
+    perform_check(
+        "Archetect",
+        Command::new("archetect").arg("--version"),
+        "core/archetect/#installation",
+    )
 }
 
 fn check_archetect_config(_args: &ArgMatches) -> anyhow::Result<()> {
     println!("\n{CHECK_PREFIX} Checking Archetect Configuration");
-    if !home_dir().expect("Home Directory Required")
+    if !home_dir()
+        .expect("Home Directory Required")
         .join(".archetect/etc/archetect.yaml")
-        .exists() {
+        .exists()
+    {
         println!("\t{CHECK_ERROR} Archetect is not configured correctly for your environment.");
         print_see_also("core/archetect/#configuration");
     } else {

@@ -1,6 +1,6 @@
-use std::process::Command;
-use clap::ArgMatches;
 use crate::workstation::check::common::*;
+use clap::ArgMatches;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_python(args)?;
@@ -9,7 +9,11 @@ pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 fn check_python(_args: &ArgMatches) -> anyhow::Result<()> {
-    perform_check("Python", Command::new("python3").arg("--version"), "python/#python")
+    perform_check(
+        "Python",
+        Command::new("python3").arg("--version"),
+        "python/#python",
+    )
 }
 
 fn check_pip(_args: &ArgMatches) -> anyhow::Result<()> {

@@ -34,4 +34,3 @@ pub async fn execute(args: &ArgMatches) -> anyhow::Result<()> {
 
     Ok(())
 }
-

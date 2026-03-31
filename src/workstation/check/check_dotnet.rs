@@ -1,6 +1,6 @@
-use std::process::Command;
-use clap::ArgMatches;
 use crate::workstation::check::common::*;
+use clap::ArgMatches;
+use std::process::Command;
 
 pub fn execute(args: &ArgMatches) -> anyhow::Result<()> {
     check_dotnet_binary(args)?;
