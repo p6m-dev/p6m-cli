@@ -326,8 +326,7 @@ impl P6mEnvironment {
             true => {
                 println!("Using development environment");
                 let mut auth_n = auth_n.clone();
-                auth_n.apps_uri =
-                    Some("https://9b6hcz5ny6.execute-api.us-east-2.amazonaws.com/api".into());
+                auth_n.apps_uri = Some("https://auth-dev.p6m.dev/api".into());
                 auth_n.scopes = Some(vec!["urn:auth:dev:true".into()]);
                 Self {
                     config_dir: config_dir.clone(),

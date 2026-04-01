@@ -2436,7 +2436,6 @@ version = "0.7.5"
 dependencies = [
  "anyhow",
  "async-trait",
- "atty",
  "aws-config",
  "aws-sdk-eks",
  "aws-sdk-sso 0.33.0",

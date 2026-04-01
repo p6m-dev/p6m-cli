@@ -5,6 +5,10 @@ use log::trace;
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
 
+// AKS AAD client ID — only supports device code flow, not interactive browser auth.
+// https://azure.github.io/kubelogin/concepts/aks.html#azure-kubernetes-service-aad-server
+const AKS_AAD_CLIENT_ID: &str = "80faf920-1908-4b52-b5ef-a8e7bedfc67a";
+
 #[derive(Debug, Serialize, Deserialize, strum_macros::Display, Clone)]
 pub enum AuthToken {
     #[strum(to_string = "ACCESS_TOKEN")]
@@ -19,19 +23,6 @@ pub enum AuthToken {
     #[strum(to_string = "CLIENT_ID")]
     #[serde(rename = "client_id")]
     ClientId,
-}
-
-impl AuthToken {
-    /// Returns true if the client_id value requires interactive browser auth
-    /// instead of device code flow.
-    pub fn is_interactive(client_id: &str) -> bool {
-        match client_id {
-            // Azure Kubernetes AAD client ID — supports Web Browser Interactive login.
-            // https://azure.github.io/kubelogin/concepts/aks.html
-            "80faf920-1908-4b52-b5ef-a8e7bedfc67a" => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +60,23 @@ pub struct AuthN {
 }
 
 impl AuthN {
+    /// Returns true if this auth provider uses interactive browser login (PKCE)
+    /// instead of device code flow. Determined by a localhost redirect_uri in params.
+    pub fn is_interactive(&self) -> bool {
+        if self.client_id.as_deref() == Some(AKS_AAD_CLIENT_ID) {
+            return false;
+        }
+
+        self.redirect_uri()
+            .map(|uri| uri.starts_with("http://localhost"))
+            .unwrap_or(false)
+    }
+
+    /// Returns the redirect_uri from params, if configured.
+    pub fn redirect_uri(&self) -> Option<&String> {
+        self.params.as_ref().and_then(|p| p.get("redirect_uri"))
+    }
+
     pub fn apps_uri(&self) -> Option<String> {
         return self.apps_uri.clone();
     }
@@ -117,11 +125,19 @@ impl AuthN {
         Ok(form)
     }
 
-    /// Returns additional scopes declared on this auth provider (e.g. Azure server_id scopes).
-    pub fn additional_scopes(&self) -> String {
+    /// Returns scopes for this auth provider.
+    /// Checks explicit scopes first, then falls back to the `scopes` param
+    /// from meta.p6m.dev/authn-provider extraParams.
+    pub fn additional_scopes(&self) -> Vec<String> {
         self.scopes
-            .as_ref()
-            .map(|s| s.join(" "))
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                self.params
+                    .as_ref()
+                    .and_then(|p| p.get("scopes"))
+                    .map(|s| s.split_whitespace().map(String::from).collect())
+            })
             .unwrap_or_default()
     }
 }
