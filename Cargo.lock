@@ -2436,7 +2436,6 @@ version = "0.7.5"
 dependencies = [
  "anyhow",
  "async-trait",
- "atty",
  "aws-config",
  "aws-sdk-eks",
  "aws-sdk-sso 0.33.0",
@@ -2471,6 +2470,7 @@ dependencies = [
  "serde_with",
  "serde_yaml",
  "sha1",
+ "sha2",
  "shellexpand",
  "strum",
  "strum_macros",

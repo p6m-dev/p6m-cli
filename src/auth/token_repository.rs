@@ -1,6 +1,5 @@
 use crate::{App, AuthN, AuthToken, Client};
 use anyhow::{Context, Result};
-use atty::Stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Duration, Local, Utc};
 use jsonwebtokens::raw::{self, TokenSlices};
@@ -8,6 +7,7 @@ use log::{debug, trace};
 use openid::AccessTokenResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::io::IsTerminal;
 use std::{
     collections::BTreeMap,
     env,
@@ -331,6 +331,11 @@ impl TokenRepository {
             .context("Unable to get app")?;
 
         self.with_app(&app).context("Unable to set app")?;
+        trace!(
+            "with_authn_app_id auth_dir={}, client_id={:?}",
+            self.auth_dir,
+            self.auth_n.client_id
+        );
 
         match self
             .try_refresh(&TryReason::RefreshFor(app.clone()))
@@ -342,7 +347,6 @@ impl TokenRepository {
             .ok()
         {
             None => {
-                // TODO
                 debug!("Unable to refresh, trying to login");
                 self.force()
                     .try_login(&&TryReason::LoginTo(app.clone()))
@@ -425,21 +429,23 @@ impl TokenRepository {
 
     async fn login(&mut self, reason: TryAuthReason) -> Result<AccessTokenResponse> {
         debug!("attempting login due to: {reason}");
-        if atty::isnt(Stream::Stdin) {
+
+        // Interactive browser auth works without a TTY (opens browser, listens on localhost).
+        // Device code flow requires a TTY for user to copy the code.
+        if !self.auth_n.is_interactive() && !std::io::stdin().is_terminal() {
             let cmd = env::args().into_iter().collect::<Vec<_>>().join(" ");
             return Err(anyhow::Error::msg(format!(
                 "Please run `{cmd}` in an interactive session."
             )));
         }
-
         let device_code_request = openid::DeviceCodeRequest::new(self).await?;
 
         let access_token_response = device_code_request
             .login(&reason)
             .await
-            .context("unable to exchange device code for tokens")
+            .context("unable to login")
             .map_err(|e| {
-                debug!("Unable to exchange device code for tokens: {e}");
+                debug!("Unable to login: {e}");
                 e
             })?;
 
@@ -502,8 +508,8 @@ impl TokenRepository {
     fn with_app(&mut self, app: &App) -> Result<()> {
         self.auth_n = app.auth_n.clone().context("missing authn")?;
         self.auth_dir = self.auth_dir.join(format!("app_{}", app.client_id));
-        self.scopes = vec![];
-        self.default_scopes = "".into();
+        self.scopes = self.auth_n.additional_scopes();
+        self.default_scopes = self.scopes.join(" ");
         self.desired_claims = Claims::default();
         fs::create_dir_all(&self.auth_dir)?;
         Ok(())
@@ -604,9 +610,11 @@ impl TokenRepository {
 
     /// Write All Tokens that exist in the [AccessTokenResponse].
     pub fn write_tokens(&self, tokens: &AccessTokenResponse) -> Result<()> {
+        trace!("write_tokens auth_dir={}", self.auth_dir);
         self.write_token(AuthToken::Access, tokens.access_token.as_ref())?;
         self.write_token(AuthToken::Id, tokens.id_token.as_ref())?;
         self.write_token(AuthToken::Refresh, tokens.refresh_token.as_ref())?;
+        self.write_token(AuthToken::ClientId, self.auth_n.client_id.as_ref())?;
         Ok(())
     }
 

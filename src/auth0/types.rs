@@ -5,6 +5,10 @@ use log::trace;
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
 
+// AKS AAD client ID — only supports device code flow, not interactive browser auth.
+// https://azure.github.io/kubelogin/concepts/aks.html#azure-kubernetes-service-aad-server
+const AKS_AAD_CLIENT_ID: &str = "80faf920-1908-4b52-b5ef-a8e7bedfc67a";
+
 #[derive(Debug, Serialize, Deserialize, strum_macros::Display, Clone)]
 pub enum AuthToken {
     #[strum(to_string = "ACCESS_TOKEN")]
@@ -16,6 +20,9 @@ pub enum AuthToken {
     #[strum(to_string = "REFRESH_TOKEN")]
     #[serde(rename = "refresh_token")]
     Refresh,
+    #[strum(to_string = "CLIENT_ID")]
+    #[serde(rename = "client_id")]
+    ClientId,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +60,23 @@ pub struct AuthN {
 }
 
 impl AuthN {
+    /// Returns true if this auth provider uses interactive browser login (PKCE)
+    /// instead of device code flow. Determined by a localhost redirect_uri in params.
+    pub fn is_interactive(&self) -> bool {
+        if self.client_id.as_deref() == Some(AKS_AAD_CLIENT_ID) {
+            return false;
+        }
+
+        self.redirect_uri()
+            .map(|uri| uri.starts_with("http://localhost"))
+            .unwrap_or(false)
+    }
+
+    /// Returns the redirect_uri from params, if configured.
+    pub fn redirect_uri(&self) -> Option<&String> {
+        self.params.as_ref().and_then(|p| p.get("redirect_uri"))
+    }
+
     pub fn apps_uri(&self) -> Option<String> {
         return self.apps_uri.clone();
     }
@@ -99,6 +123,22 @@ impl AuthN {
         form.insert("grant_type".to_string(), "refresh_token".to_string());
         trace!("refresh_form_data: {:?}", form);
         Ok(form)
+    }
+
+    /// Returns scopes for this auth provider.
+    /// Checks explicit scopes first, then falls back to the `scopes` param
+    /// from meta.p6m.dev/authn-provider extraParams.
+    pub fn additional_scopes(&self) -> Vec<String> {
+        self.scopes
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                self.params
+                    .as_ref()
+                    .and_then(|p| p.get("scopes"))
+                    .map(|s| s.split_whitespace().map(String::from).collect())
+            })
+            .unwrap_or_default()
     }
 }
 
