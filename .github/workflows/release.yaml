@@ -25,8 +25,6 @@ env:
   DOWNLOAD_PREFIX: "https://github.com/${{ github.repository }}/releases/download"
   DESTINATION_HOMEBREW_TAP: ${{ github.repository_owner }}/homebrew-tap
   REPOSITORY_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-  COMMIT_USER: github-actions
-  COMMIT_EMAIL: github-actions@users.noreply.github.com
 
 jobs:
   pre-release:
@@ -43,12 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: p6m-actions/token-exchange@v2
+
       - name: Bump Version
         if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          git config user.name ${{ env.COMMIT_USER }}
-          git config user.email ${{ env.COMMIT_EMAIL }}
           cargo workspaces version ${{ inputs.level }} -y --allow-branch main -m "Release %v [skip ci]" --no-individual-tags --force '*'
 
       - name: Capture Version
