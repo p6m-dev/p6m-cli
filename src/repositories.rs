@@ -15,6 +15,7 @@ pub async fn execute(matches: &ArgMatches) -> Result<(), Error> {
     match matches.subcommand() {
         Some(("pull", subargs)) => pull(subargs).await,
         Some(("push", subargs)) => push(subargs).await,
+        Some(("prune", subargs)) => prune(subargs).await,
         Some(("delete", subargs)) => delete(subargs).await,
         Some((command, _)) => Err(Error::msg(format!(
             "Unimplemented repos command: '{}'",
@@ -72,7 +73,7 @@ async fn pull_organization(
 ) -> Result<(), Error> {
     let dry_run = matches.get_flag("dry-run");
     let all = matches.get_flag("all");
-    let _prune = matches.get_flag("prune");
+    let prune_flag = matches.get_flag("prune");
 
     let org_directory = org_directory(org_name);
     fs::create_dir_all(&org_directory).await?;
@@ -146,6 +147,10 @@ async fn pull_organization(
                 }
             }
         }
+    }
+
+    if prune_flag {
+        prune_organization(client, org_name, dry_run).await?;
     }
 
     Ok(())
@@ -273,6 +278,115 @@ async fn push_repository(repository: &Repository, dry_run: bool) -> Result<(), E
             .arg("HEAD")
             .status()
             .await?;
+    }
+
+    Ok(())
+}
+
+async fn prune(matches: &ArgMatches) -> Result<(), Error> {
+    let client = create_octocrab()?;
+
+    let org_name = if let Some(name) = matches.get_one::<String>("organization-name") {
+        name.clone()
+    } else {
+        match GithubLevel::current() {
+            Ok(GithubLevel::Organization(org)) => org.name().to_string(),
+            Ok(GithubLevel::Repository(repo)) => repo.organization().name().to_string(),
+            Ok(GithubLevel::Enterprise) | Err(_) => {
+                return Err(Error::msg(
+                    "Could not determine organization. Pass --org <name> or run from within ~/orgs/<org>/.",
+                ));
+            }
+        }
+    };
+
+    prune_organization(&client, &org_name, false).await
+}
+
+async fn prune_organization(client: &Octocrab, org_name: &str, dry_run: bool) -> Result<(), Error> {
+    let organization = crate::models::git::Organization::new(org_name);
+
+    if !organization.local_path().exists() {
+        info!("No local checkout for {}; nothing to prune.", org_name);
+        return Ok(());
+    }
+
+    let repos_first_page = client
+        .orgs(org_name)
+        .list_repos()
+        .repo_type(octocrab::params::repos::Type::All)
+        .per_page(25)
+        .send()
+        .await?;
+
+    let remote: std::collections::HashSet<String> = client
+        .all_pages(repos_first_page)
+        .await?
+        .into_iter()
+        .map(|r| r.name.to_lowercase())
+        .collect();
+
+    let stale: Vec<Repository> = organization
+        .repositories()?
+        .filter(|r| r.has_path(".git"))
+        .filter(|r| !remote.contains(&r.name().to_lowercase()))
+        .collect();
+
+    if stale.is_empty() {
+        info!("No stale local repos in {}.", org_name);
+        return Ok(());
+    }
+
+    info!(
+        "The following local repos are not present in {} on GitHub:",
+        org_name
+    );
+
+    let all_indices: Vec<usize> = (0..stale.len()).collect();
+    let selected = match MultiSelect::new(
+        &format!(
+            "Select repos to delete in {} (Space toggles, Ctrl+A toggles all, Enter to confirm):",
+            org_name
+        ),
+        stale,
+    )
+    .with_default(&all_indices)
+    .with_page_size(25)
+    .prompt()
+    {
+        Ok(s) => s,
+        Err(_) => {
+            info!("Aborted; nothing deleted in {}.", org_name);
+            return Ok(());
+        }
+    };
+
+    if selected.is_empty() {
+        info!("No repos selected; nothing deleted in {}.", org_name);
+        return Ok(());
+    }
+
+    let confirmed = Confirm::new(&format!(
+        "Delete {} selected local repo(s) under ~/orgs/{}/?",
+        selected.len(),
+        org_name
+    ))
+    .with_default(false)
+    .prompt()?;
+
+    if !confirmed {
+        info!("Aborted; nothing deleted in {}.", org_name);
+        return Ok(());
+    }
+
+    for repo in selected {
+        warn!("Removing {}", repo.local_path().display());
+        if dry_run {
+            continue;
+        }
+        if let Err(err) = fs::remove_dir_all(repo.local_path()).await {
+            error!("Failed to remove {}: {}", repo.local_path().display(), err);
+        }
     }
 
     Ok(())

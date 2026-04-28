@@ -183,6 +183,17 @@ pub fn command() -> Command {
                     )
             )
             .subcommand(
+                Command::new("prune")
+                    .about("Remove local repos that no longer exist in the GitHub org")
+                    .arg(
+                        Arg::new("organization-name")
+                            .long("org")
+                            .short('o')
+                            .required(false)
+                            .help("The JV Organization Name")
+                    )
+            )
+            .subcommand(
                 Command::new("delete")
                     .hide(true)
                     .about("Delete repos for one or more repositories")
