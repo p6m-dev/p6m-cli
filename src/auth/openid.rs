@@ -513,24 +513,3 @@ impl AccessTokenResponse {
         )
     }
 }
-
-/// The UserInfo response. Some fields may be missing depending on the scopes requested.
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct UserInfo {
-    // Only available if the "profile" scope was requested on the token
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    // Only available if the "email" scope was requested on the token
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub email: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "https://p6m.dev/v1/email")]
-    pub p6m_email: Option<String>,
-
-    // Only available if the "https://p6m.dev/v1/org" claim is on the token
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "https://p6m.dev/v1/org")]
-    pub org: Option<String>,
-}

@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 P6m CLI (`p6m`) is a Rust-based developer productivity tool for the p6m development platform. It handles repository management, organization context switching, SSO/auth integration (Auth0, AWS, Azure), and workstation environment validation.
 
+## Documentation
+
+Whenever user-facing functionality changes — new commands or subcommands, new flags, renamed/removed flags, changed defaults, or changed behavior of existing commands — revise `README.md` in the same change so the docs stay in sync. This includes adding usage examples for new commands and removing examples for anything that no longer exists.
+
 ## Essential Commands
 
 ```bash

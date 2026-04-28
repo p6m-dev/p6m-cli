@@ -78,6 +78,23 @@ Pull only new repositories.  Do not pull existing repos:
 p6m repos pull --new  # Only pull new repos 
 ```
 
+Pull and also prune local repos that no longer exist on GitHub (interactive selection):
+
+```shell
+p6m repos pull --prune  # Pull, then prompt to remove local repos no longer on GitHub
+```
+
+Pruning local repositories that no longer exist on GitHub:
+
+```shell
+p6m repos prune  # From inside ~/orgs/<org>, lists stale local repos and prompts before deleting
+# or
+p6m repos prune --org p6m-example  # From anywhere
+```
+
+The `prune` subcommand only considers directories with a `.git` folder, presents a multi-select prompt
+(all stale repos preselected), and asks for a final confirmation before any deletion.
+
 ### Changing Contexts
 
 _Make sure you have configured your `ARTIFACTORY_USERNAME` & `ARTIFACTORY_IDENTITY_TOKEN` environment variable, before using these commands._
