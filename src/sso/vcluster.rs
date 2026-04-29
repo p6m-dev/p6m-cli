@@ -80,6 +80,13 @@ async fn update_kubeconfig(secret: &Secret) -> Result<String, Error> {
     let server_name =
         uniqueify_kubeconfig(&mut new_kubeconfig).context("couldn't uniqueify kubeconfig")?;
 
+    // kube's merge skips entries whose name already exists, so remove stale
+    // entries first to ensure the secret's values always take effect.
+    let mut kubeconfig = kubeconfig;
+    kubeconfig.clusters.retain(|c| c.name != server_name);
+    kubeconfig.contexts.retain(|c| c.name != server_name);
+    kubeconfig.auth_infos.retain(|a| a.name != server_name);
+
     let kubeconfig = kubeconfig
         .merge(new_kubeconfig)
         .context("unable to merge configs")?;
